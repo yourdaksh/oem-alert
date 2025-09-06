@@ -1,0 +1,118 @@
+# OEM configuration file - defines all supported OEMs and their scraping parameters
+oems_config:
+  microsoft:
+    name: "Microsoft"
+    base_url: "https://msrc.microsoft.com"
+    vulnerability_url: "https://msrc.microsoft.com/update-guide/vulnerabilities"
+    rss_url: "https://msrc.microsoft.com/update-guide/rss"
+    scraper_class: "MicrosoftScraper"
+    enabled: true
+    scan_interval_hours: 6
+    description: "Microsoft Security Response Center"
+  
+  cisco:
+    name: "Cisco"
+    base_url: "https://tools.cisco.com"
+    vulnerability_url: "https://tools.cisco.com/security/center/publicationListing.x"
+    rss_url: "https://tools.cisco.com/security/center/rss.x"
+    scraper_class: "CiscoScraper"
+    enabled: true
+    scan_interval_hours: 12
+    description: "Cisco Security Advisories"
+  
+  intel:
+    name: "Intel"
+    base_url: "https://www.intel.com"
+    vulnerability_url: "https://www.intel.com/content/www/us/en/security-center/default.html"
+    rss_url: "https://www.intel.com/content/www/us/en/security-center/rss.xml"
+    scraper_class: "IntelScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Intel Security Center"
+  
+  oracle:
+    name: "Oracle"
+    base_url: "https://www.oracle.com"
+    vulnerability_url: "https://www.oracle.com/security-alerts/"
+    rss_url: "https://www.oracle.com/security-alerts/rss.xml"
+    scraper_class: "OracleScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Oracle Security Alerts"
+  
+  vmware:
+    name: "VMware"
+    base_url: "https://www.vmware.com"
+    vulnerability_url: "https://www.vmware.com/security/advisories.html"
+    rss_url: "https://www.vmware.com/security/advisories.xml"
+    scraper_class: "VMwareScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "VMware Security Advisories"
+  
+  adobe:
+    name: "Adobe"
+    base_url: "https://helpx.adobe.com"
+    vulnerability_url: "https://helpx.adobe.com/security.html"
+    rss_url: "https://helpx.adobe.com/security/rss.xml"
+    scraper_class: "AdobeScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Adobe Security Bulletins"
+  
+  apache:
+    name: "Apache"
+    base_url: "https://httpd.apache.org"
+    vulnerability_url: "https://httpd.apache.org/security/"
+    rss_url: "https://httpd.apache.org/security/rss.xml"
+    scraper_class: "ApacheScraper"
+    enabled: true
+    scan_interval_hours: 48
+    description: "Apache HTTP Server Security"
+  
+  redhat:
+    name: "Red Hat"
+    base_url: "https://access.redhat.com"
+    vulnerability_url: "https://access.redhat.com/security/security-updates"
+    rss_url: "https://access.redhat.com/security/security-updates.rss"
+    scraper_class: "RedHatScraper"
+    enabled: true
+    scan_interval_hours: 12
+    description: "Red Hat Security Updates"
+  
+  ubuntu:
+    name: "Ubuntu"
+    base_url: "https://ubuntu.com"
+    vulnerability_url: "https://ubuntu.com/security/notices"
+    rss_url: "https://ubuntu.com/security/notices/rss.xml"
+    scraper_class: "UbuntuScraper"
+    enabled: true
+    scan_interval_hours: 12
+    description: "Ubuntu Security Notices"
+  
+  apple:
+    name: "Apple"
+    base_url: "https://support.apple.com"
+    vulnerability_url: "https://support.apple.com/en-us/HT201222"
+    rss_url: "https://support.apple.com/en-us/HT201222.rss"
+    scraper_class: "AppleScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Apple Security Updates"
+
+# Severity mapping for standardization
+severity_mapping:
+  critical: ["critical", "cve", "high", "urgent"]
+  high: ["high", "important", "severe"]
+  medium: ["medium", "moderate", "normal"]
+  low: ["low", "minor", "informational"]
+
+# Common vulnerability patterns
+vulnerability_patterns:
+  cve_pattern: "CVE-\\d{4}-\\d{4,7}"
+  cvss_pattern: "CVSS:3\\.\\d/\\d+\\.\\d"
+  version_pattern: "\\d+\\.\\d+(?:\\.\\d+)?(?:\\.\\d+)?"
+  date_patterns:
+    - "\\d{4}-\\d{2}-\\d{2}"
+    - "\\d{2}/\\d{2}/\\d{4}"
+    - "\\d{2}-\\d{2}-\\d{4}"
