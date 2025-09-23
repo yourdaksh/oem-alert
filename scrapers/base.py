@@ -3,11 +3,20 @@ Base scraper class and utilities for OEM vulnerability scraping
 """
 import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    HAS_SELENIUM = True
+except Exception:
+    webdriver = None
+    Options = None
+    By = None
+    WebDriverWait = None
+    EC = None
+    HAS_SELENIUM = False
 from datetime import datetime, timedelta
 import re
 import time
@@ -38,8 +47,11 @@ class BaseScraper(ABC):
         if self.driver:
             self.driver.quit()
     
-    def setup_selenium(self, headless: bool = True) -> webdriver.Chrome:
+    def setup_selenium(self, headless: bool = True):
         """Setup selenium webdriver"""
+        if not HAS_SELENIUM:
+            logger.warning("Selenium not available; cannot setup webdriver")
+            return None
         chrome_options = Options()
         if headless:
             chrome_options.add_argument("--headless")
@@ -78,8 +90,16 @@ class BaseScraper(ABC):
                 html = self.driver.page_source
                 return BeautifulSoup(html, 'html.parser')
             else:
-                response = self.session.get(url, timeout=30)
-                response.raise_for_status()
+                response = self.session.get(url, timeout=15)
+                try:
+                    response.raise_for_status()
+                except requests.HTTPError as http_err:
+                    status = getattr(response, 'status_code', None)
+                    # Fallback to Selenium for common block statuses
+                    if status in (403, 429) and HAS_SELENIUM:
+                        logger.warning(f"HTTP {status} for {url}; retrying with Selenium headless")
+                        return self.get_page(url, use_selenium=True, wait_for_element=wait_for_element)
+                    raise
                 return BeautifulSoup(response.content, 'html.parser')
                 
         except Exception as e:
@@ -150,6 +170,10 @@ class BaseScraper(ABC):
                 pass
         
         return None
+
+    def extract_severity_from_text(self, text: str) -> str:
+        """Default severity extractor based on keyword mapping"""
+        return self.normalize_severity(text or "")
     
     def clean_text(self, text: str) -> str:
         """Clean and normalize text"""

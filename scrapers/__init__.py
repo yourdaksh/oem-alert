@@ -3,16 +3,11 @@ Scraper registry and initialization
 """
 from typing import Dict, List, Any, Type
 from scrapers.base import BaseScraper
-from scrapers.microsoft import MicrosoftScraper
-from scrapers.cisco import CiscoScraper
 from scrapers.intel import IntelScraper
 from scrapers.oracle import OracleScraper
-from scrapers.vmware import VMwareScraper
-from scrapers.adobe import AdobeScraper
-from scrapers.redhat import RedHatScraper
 from scrapers.ubuntu import UbuntuScraper
-from scrapers.apache import ApacheScraper
-from scrapers.apple import AppleScraper
+from scrapers.android import AndroidScraper
+from scrapers.schneider import SchneiderScraper
 from config import get_all_oems, get_enabled_oems
 import logging
 
@@ -20,17 +15,11 @@ logger = logging.getLogger(__name__)
 
 # Registry of available scrapers
 SCRAPER_REGISTRY: Dict[str, Type[BaseScraper]] = {
-    'microsoft': MicrosoftScraper,
-    'cisco': CiscoScraper,
     'intel': IntelScraper,
     'oracle': OracleScraper,
-    'vmware': VMwareScraper,
-    'adobe': AdobeScraper,
-    'redhat': RedHatScraper,
     'ubuntu': UbuntuScraper,
-    'apache': ApacheScraper,
-    'apple': AppleScraper,
-    # Add more scrapers as they are implemented
+    'android': AndroidScraper,
+    'schneider': SchneiderScraper,
 }
 
 class ScraperManager:

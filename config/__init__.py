@@ -4,6 +4,10 @@ Configuration management for the OEM vulnerability alert system
 import yaml
 import os
 from typing import Dict, Any, List
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 def load_oems_config() -> Dict[str, Any]:
     """Load OEM configuration from YAML file"""

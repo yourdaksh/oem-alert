@@ -35,8 +35,17 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Load schedule from configuration file
+if [ -f "cron_schedule.conf" ]; then
+    SCHEDULE=$(grep "^SCHEDULE=" cron_schedule.conf | cut -d'"' -f2)
+    echo "Using schedule from config: $SCHEDULE"
+else
+    SCHEDULE="0 * * * *"  # Default: every hour
+    echo "Using default schedule: $SCHEDULE"
+fi
+
 # Create cron job entry
-CRON_ENTRY="0 * * * * cd $CURRENT_DIR && python3 run_scrapers.py >> scraper.log 2>&1"
+CRON_ENTRY="$SCHEDULE cd $CURRENT_DIR && python3 run_scrapers.py >> scraper.log 2>&1"
 
 # Check if cron job already exists
 if crontab -l 2>/dev/null | grep -q "run_scrapers.py"; then
@@ -75,6 +84,10 @@ if [ ! -f ".env" ]; then
         echo "Warning: env.example not found. You may need to create .env manually."
     fi
 fi
+
+# Database setup complete
+echo ""
+echo "🗄️  SQLite database will be created automatically on first run"
 
 echo ""
 echo "🎉 Setup completed successfully!"

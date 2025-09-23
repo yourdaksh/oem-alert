@@ -35,64 +35,69 @@ class OracleScraper(RSSScraper):
         vulnerabilities = []
         
         try:
-            # Look for security alert entries
-            alert_sections = soup.find_all('div', class_=re.compile(r'alert|security|advisory', re.I))
+            # Look for CVE text directly since we found CVE content
+            cve_text_elements = soup.find_all(string=lambda x: x and 'CVE-' in x)
             
-            for section in alert_sections:
+            for cve_text in cve_text_elements:
                 try:
-                    # Look for CVE links
-                    cve_links = section.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}'))
+                    # Extract CVE ID from text
+                    cve_match = re.search(r'CVE-\d{4}-\d{4,7}', cve_text)
+                    if not cve_match:
+                        continue
                     
-                    for cve_link in cve_links:
-                        cve_id = cve_link.text.strip()
-                        
-                        # Find the parent container for this CVE
-                        parent = cve_link.find_parent(['div', 'section', 'article'])
-                        if not parent:
-                            continue
-                        
-                        # Extract title
-                        title_elem = parent.find(['h1', 'h2', 'h3', 'h4'])
-                        title = title_elem.text.strip() if title_elem else ""
-                        
-                        # Extract description
-                        desc_elem = parent.find('p') or parent.find('div', class_=re.compile(r'description', re.I))
-                        description = desc_elem.text.strip() if desc_elem else ""
-                        
-                        # Extract severity
-                        severity = self.extract_oracle_severity(parent)
-                        
-                        # Extract product information
-                        product_name = self.extract_oracle_product(title, description)
-                        
-                        # Extract published date
-                        published_date = datetime.now()
-                        date_elem = parent.find('time') or parent.find('span', class_=re.compile(r'date', re.I))
-                        if date_elem:
-                            date_text = date_elem.get('datetime') or date_elem.text
-                            parsed_date = self.parse_date(date_text)
-                            if parsed_date:
-                                published_date = parsed_date
-                        
-                        # Extract CVSS score
-                        cvss_score = self.extract_cvss_score(parent.get_text())
-                        
-                        vuln_record = self.create_vulnerability_record(
-                            unique_id=cve_id,
-                            product_name=product_name,
-                            product_version=None,
-                            severity_level=severity,
-                            vulnerability_description=f"{title}\n\n{description}",
-                            mitigation_strategy=None,
-                            published_date=published_date,
-                            source_url=cve_link.get('href'),
-                            cvss_score=cvss_score
-                        )
-                        
-                        vulnerabilities.append(vuln_record)
-                
+                    cve_id = cve_match.group(0)
+                    
+                    # Get the parent element for context
+                    parent = cve_text.parent
+                    if not parent:
+                        continue
+                    
+                    # Extract title/description
+                    title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) or parent
+                    title = title_elem.get_text().strip() if title_elem else cve_id
+                    
+                    # Extract description from surrounding text
+                    desc_elem = parent.find(['p', 'div', 'span'], class_=re.compile(r'description|summary|content', re.I))
+                    if not desc_elem:
+                        desc_text = parent.get_text()
+                        description = desc_text.replace(title, '').strip()
+                    else:
+                        description = desc_elem.get_text().strip()
+                    
+                    # Extract severity
+                    severity = self.extract_oracle_severity(parent)
+                    
+                    # Extract product information
+                    product_name = self.extract_oracle_product(title, description)
+                    
+                    # Extract published date
+                    date_elem = parent.find(['time', 'span', 'div'], class_=re.compile(r'date|published|updated', re.I))
+                    published_date = datetime.now()
+                    if date_elem:
+                        date_text = date_elem.get('datetime') or date_elem.text
+                        parsed_date = self.parse_date(date_text)
+                        if parsed_date:
+                            published_date = parsed_date
+                    
+                    # Extract CVSS score
+                    cvss_score = self.extract_cvss_score(parent.get_text())
+                    
+                    vuln_record = self.create_vulnerability_record(
+                        unique_id=cve_id,
+                        product_name=product_name,
+                        product_version=None,
+                        severity_level=severity,
+                        vulnerability_description=f"{title}\n\n{description}",
+                        mitigation_strategy=None,
+                        published_date=published_date,
+                        source_url=self.oem_config.get('vulnerability_url'),
+                        cvss_score=cvss_score
+                    )
+                    
+                    vulnerabilities.append(vuln_record)
+                    
                 except Exception as e:
-                    logger.error(f"Error parsing Oracle alert section: {e}")
+                    logger.error(f"Error parsing Oracle CVE text: {e}")
                     continue
         
         except Exception as e:

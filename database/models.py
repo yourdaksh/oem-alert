@@ -4,7 +4,9 @@ SQLAlchemy models for the vulnerability alert system
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from database import Base
+ee from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
 
 class Vulnerability(Base):
     """Model for storing vulnerability information"""
