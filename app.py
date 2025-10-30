@@ -1,6 +1,3 @@
-"""
-Main Streamlit application for OEM Vulnerability Alert Platform
-"""
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -64,7 +61,7 @@ def initialize_services():
 
 def main():
     """Main application function with authentication and improved UI"""
-    # --- Simplified Modern CSS ---
+
     st.markdown(
         """
         <style>
@@ -105,12 +102,12 @@ def main():
         unsafe_allow_html=True
     )
 
-    # --- Authentication ---
+
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
 
     if not st.session_state.authenticated:
-        # Simple Login Page
+  
         st.markdown(
             """
             <div style='text-align: center; padding: 2rem 0;'>
@@ -125,7 +122,7 @@ def main():
             unsafe_allow_html=True
         )
         
-        # Simple Login Form
+
         col1, col2, col3 = st.columns([1, 2, 1])
         
         with col2:
@@ -162,7 +159,6 @@ def main():
                     )
                 
                 if submitted:
-                    # Simple hardcoded credentials (replace with secure method in production)
                     if username == "admin" and password == "admin123":
                         st.session_state.authenticated = True
                         st.success("🎉 Login successful! Initializing platform...")
@@ -170,25 +166,10 @@ def main():
                     else:
                         st.error("❌ Invalid username or password. Please try again.")
         
-        # Footer with additional info
-        st.markdown(
-            """
-            <div style='text-align: center; margin-top: 3rem; padding: 2rem; 
-                        background: rgba(20, 20, 20, 0.5); border-radius: 20px; 
-                        border: 1px solid rgba(59, 130, 246, 0.2);'>
-                <div style='color: #a0a0a0; font-size: 0.9rem;'>
-                    🔐 Secure • 🚀 Fast • 📊 Comprehensive • 🎯 Real-time
-                </div>
-                <div style='color: #666; font-size: 0.8rem; margin-top: 1rem;'>
-                    Default credentials: admin / admin123
-                </div>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
+        # Footer removed per request
         st.stop()
 
-    # --- Main App Content with Creative Header ---
+
     st.markdown(
         """
         <div style='text-align: center; padding: 2rem 0; margin-bottom: 2rem;'>
@@ -205,11 +186,10 @@ def main():
         unsafe_allow_html=True
     )
 
-    # Initialize services
+
     if not initialize_services():
         st.stop()
 
-    # Enhanced Sidebar navigation
     st.sidebar.markdown(
         """
         <div style='text-align: center; padding: 1rem 0; margin-bottom: 2rem;'>
@@ -252,7 +232,7 @@ def main():
         }[x]
     )
 
-    # Route to appropriate page
+
     if page == "Dashboard":
         show_dashboard()
     elif page == "Vulnerabilities":
@@ -285,12 +265,12 @@ def show_dashboard():
         unsafe_allow_html=True
     )
     
-    # Get statistics
+
     stats = st.session_state.db_ops.get_vulnerability_stats()
     scan_stats = st.session_state.db_ops.get_scan_stats()
     notification_stats = st.session_state.db_ops.get_notification_stats()
     
-    # Enhanced Key metrics with creative styling
+
     st.markdown(
         """
         <div style='margin-bottom: 2rem;'>
@@ -381,7 +361,7 @@ def show_dashboard():
             unsafe_allow_html=True
         )
     
-    # Enhanced Recent vulnerabilities section
+
     st.markdown(
         """
         <div style='margin: 3rem 0 2rem 0;'>
@@ -400,7 +380,7 @@ def show_dashboard():
         limit=10
     )
     
-    # Also get High severity
+   
     high_vulns = st.session_state.db_ops.get_vulnerabilities(
         severity="High",
         days_back=7,
@@ -411,8 +391,8 @@ def show_dashboard():
     all_recent.sort(key=lambda x: x.published_date, reverse=True)
     
     if all_recent:
-        # Create a more visually appealing display
-        for i, vuln in enumerate(all_recent[:5]):  # Show top 5
+
+        for i, vuln in enumerate(all_recent[:5]):  
             severity_color = {
                 'Critical': '#ff3b30',
                 'High': '#ff9500', 
@@ -694,35 +674,46 @@ def show_vulnerabilities():
 def show_subscriptions():
     """Show email subscription management"""
     st.header("📧 Email Subscription Management")
+    db_ops = st.session_state.db_ops
+    all_subs = db_ops.get_subscriptions()
+    if not all_subs:
+        st.markdown(
+            """
+            <div style='background: #262626; border-radius: 12px; border-left: 8px solid #00d4aa; padding: 2rem; margin-bottom: 2rem; color: #fff;'>
+                <h3 style='color: #00d4aa;'>No Subscriptions Yet!</h3>
+                <p>For platform email alerts, add a quick test subscription below.
+                   <b>Demo suggestion:</b><br>Email: <b>admin@example.com</b>, OEM: <b>Intel</b>, Severities: <b>Critical, High</b></p>
+            </div>
+            """, unsafe_allow_html=True
+        )
     
-    # Add new subscription
+    # Add new subscription (auto-fill if none exist and form is blank)
     st.subheader("Add New Subscription")
-    
+    demo_email = "admin@example.com" if not all_subs else ""
+    demo_oem = "Intel" if not all_subs else "All"
+    demo_sev = ["Critical", "High"] if not all_subs else ["Critical"]
+
     with st.form("add_subscription"):
         col1, col2 = st.columns(2)
-        
         with col1:
-            email = st.text_input("Email Address")
+            email = st.text_input("Email Address", value=demo_email)
             oem_name = st.selectbox(
                 "OEM (leave blank for all)",
-                ["All"] + list(st.session_state.db_ops.get_vulnerability_stats()['oem_distribution'].keys())
+                ["All"] + list(st.session_state.db_ops.get_vulnerability_stats()['oem_distribution'].keys()),
+                index=(1 if demo_oem == "Intel" and "Intel" in st.session_state.db_ops.get_vulnerability_stats()['oem_distribution'] else 0)
             )
-        
         with col2:
             product_name = st.text_input("Product Name (optional)")
             severity_filter = st.multiselect(
                 "Severity Levels",
                 ["Critical", "High", "Medium", "Low"],
-                default=["Critical", "High"]
+                default=demo_sev
             )
-        
         submitted = st.form_submit_button("Add Subscription")
-        
         if submitted:
             if email and severity_filter:
                 oem = None if oem_name == "All" else oem_name
                 severity_str = ",".join(severity_filter)
-                
                 try:
                     subscription = st.session_state.db_ops.add_subscription(
                         email=email,
@@ -780,10 +771,15 @@ def show_manual_scan():
     if st.button("🚀 Run Full Scan", type="primary"):
         with st.spinner("Scanning all OEMs for vulnerabilities..."):
             try:
+                db_ops = st.session_state.db_ops
+                known_ids = set(v.unique_id for v in db_ops.get_vulnerabilities(limit=1000000))
                 results = st.session_state.scraper_manager.run_all_scrapers()
                 
                 total_found = 0
                 total_new = 0
+                total_emails_sent = 0
+                any_subscription = bool(db_ops.get_subscriptions())
+                new_ids = set()
                 
                 for oem_id, vulnerabilities in results.items():
                     st.write(f"**{oem_id.title()}:** {len(vulnerabilities)} vulnerabilities found")
@@ -791,22 +787,30 @@ def show_manual_scan():
                     # Add vulnerabilities to database
                     for vuln_data in vulnerabilities:
                         try:
-                            vuln = st.session_state.db_ops.add_vulnerability(vuln_data)
+                            uid = vuln_data.get('unique_id')
+                            if uid is None:
+                                continue
+                            
+                            is_new = uid not in known_ids and uid not in new_ids
+                            vuln = db_ops.add_vulnerability(vuln_data)
                             total_found += 1
                             
-                            # Check if this is a new vulnerability
-                            if vuln.discovered_date == vuln.published_date:
+                            if is_new:
                                 total_new += 1
-                                
+                                new_ids.add(uid)
                                 # Send email notifications
                                 notification_results = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
-                                st.write(f"  - Sent {notification_results['sent']} email notifications")
-                                
+                                if notification_results['sent'] > 0:
+                                    st.info(f"Sent {notification_results['sent']} email notification{'s' if notification_results['sent'] != 1 else ''} for {uid}.")
+                                total_emails_sent += notification_results['sent']
                         except Exception as e:
                             logger.error(f"Error adding vulnerability: {e}")
-                
-                st.success(f"Scan completed! Found {total_found} total vulnerabilities, {total_new} new ones.")
-                
+                total_existing = total_found - total_new
+                st.success(f"Scan completed! Found {total_found} vulnerabilities, {total_new} new, {total_existing} already known.")
+                if total_emails_sent > 0:
+                    st.success(f"Total: Sent {total_emails_sent} email notification{'s' if total_emails_sent != 1 else ''} for new vulnerabilities.")
+                elif any_subscription:
+                    st.info("No email notifications sent (no matching new critical/high results for your current subscriptions). To test, add a subscription in the Email Subscriptions tab.")
             except Exception as e:
                 st.error(f"Scan failed: {e}")
     
@@ -825,20 +829,34 @@ def show_manual_scan():
             if st.button(f"Scan {status['name']}", key=f"scan_{oem_id}"):
                 with st.spinner(f"Scanning {status['name']}..."):
                     try:
+                        db_ops = st.session_state.db_ops
+                        known_ids = set(v.unique_id for v in db_ops.get_vulnerabilities(limit=1000000))
                         vulnerabilities = st.session_state.scraper_manager.run_scraper(oem_id)
-                        
                         new_count = 0
+                        new_ids = set()
+                        emails_sent = 0
+                        any_subscription = bool(db_ops.get_subscriptions())
                         for vuln_data in vulnerabilities:
                             try:
-                                vuln = st.session_state.db_ops.add_vulnerability(vuln_data)
-                                if vuln.discovered_date == vuln.published_date:
+                                uid = vuln_data.get('unique_id')
+                                if uid is None:
+                                    continue
+                                is_new = uid not in known_ids and uid not in new_ids
+                                vuln = db_ops.add_vulnerability(vuln_data)
+                                if is_new:
                                     new_count += 1
-                                    st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
+                                    new_ids.add(uid)
+                                    notif = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
+                                    emails_sent += notif['sent']
+                                    if notif['sent'] > 0:
+                                        st.info(f"Sent {notif['sent']} email notification{'s' if notif['sent'] != 1 else ''} for {uid}.")
                             except Exception as e:
                                 logger.error(f"Error adding vulnerability: {e}")
-                        
-                        st.success(f"Found {len(vulnerabilities)} vulnerabilities, {new_count} new")
-                        
+                        st.success(f"Found {len(vulnerabilities)} vulnerabilities, {new_count} new, {len(vulnerabilities)-new_count} already known.")
+                        if emails_sent > 0:
+                            st.success(f"Total: Sent {emails_sent} email notification{'s' if emails_sent != 1 else ''} for new vulnerabilities.")
+                        elif any_subscription:
+                            st.info("No email notifications sent (no matching new results for your current subscriptions).")
                     except Exception as e:
                         st.error(f"Scan failed: {e}")
 

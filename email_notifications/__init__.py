@@ -164,36 +164,46 @@ class EmailNotificationService:
     
     def _create_vulnerability_email_text(self, vulnerability: Vulnerability) -> str:
         """Create plain text content for vulnerability email"""
-        text = f"""
-VULNERABILITY ALERT
-==================
+        lines = [
+            "VULNERABILITY ALERT",
+            "==================",
+            "",
+            f"New {vulnerability.severity_level} Vulnerability Detected",
+            "",
+            "Vulnerability Details:",
+            f"- Unique ID: {vulnerability.unique_id}",
+            f"- Product: {vulnerability.product_name}",
+            f"- Version: {vulnerability.product_version or 'Not specified'}",
+            f"- OEM: {vulnerability.oem_name}",
+            f"- Severity: {vulnerability.severity_level}",
+            f"- CVSS Score: {vulnerability.cvss_score or 'Not available'}",
+            f"- Published Date: {vulnerability.published_date.strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "Description:",
+            vulnerability.vulnerability_description or "",
+            ""
+        ]
 
-New {vulnerability.severity_level} Vulnerability Detected
+        if vulnerability.mitigation_strategy:
+            lines.append("Mitigation Strategy:")
+            lines.append(vulnerability.mitigation_strategy)
+            lines.append("")
 
-Vulnerability Details:
-- Unique ID: {vulnerability.unique_id}
-- Product: {vulnerability.product_name}
-- Version: {vulnerability.product_version or 'Not specified'}
-- OEM: {vulnerability.oem_name}
-- Severity: {vulnerability.severity_level}
-- CVSS Score: {vulnerability.cvss_score or 'Not available'}
-- Published Date: {vulnerability.published_date.strftime('%Y-%m-%d %H:%M:%S')}
+        if vulnerability.affected_versions:
+            lines.append("Affected Versions:")
+            lines.append(vulnerability.affected_versions)
+            lines.append("")
 
-Description:
-{vulnerability.vulnerability_description}
+        if vulnerability.source_url:
+            lines.append("Full Details:")
+            lines.append(vulnerability.source_url)
+            lines.append("")
 
-{f'Mitigation Strategy:\n{vulnerability.mitigation_strategy}\n' if vulnerability.mitigation_strategy else ''}
+        lines.append("---")
+        lines.append("This alert was sent by the OEM Vulnerability Alert Platform")
+        lines.append(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-{f'Affected Versions:\n{vulnerability.affected_versions}\n' if vulnerability.affected_versions else ''}
-
-{f'Full Details: {vulnerability.source_url}\n' if vulnerability.source_url else ''}
-
----
-This alert was sent by the OEM Vulnerability Alert Platform
-Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-        """
-        
-        return text.strip()
+        return "\n".join(lines)
     
     def _send_email(self, to_email: str, subject: str, 
                    html_content: str, text_content: str) -> bool:

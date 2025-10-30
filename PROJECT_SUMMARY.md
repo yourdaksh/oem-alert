@@ -148,7 +148,7 @@ oem-alert/
 - **Scheduling**: Cron (Linux/macOS)
 - **Configuration**: YAML
 
-## 📈 Key Metrics
+## 📈 Key Metrics 
 
 - **10+ OEM Scrapers**: Exceeds requirement
 - **Modular Architecture**: Easy to extend

@@ -9,12 +9,13 @@ from scrapers.ubuntu import UbuntuScraper
 from scrapers.android import AndroidScraper
 from scrapers.schneider import SchneiderScraper
 from scrapers.cisco import CiscoScraper
+from scrapers.debian import DebianScraper
 from config import get_all_oems, get_enabled_oems
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Registry of available scrapers
+# Registry of available scrapers (active only)
 SCRAPER_REGISTRY: Dict[str, Type[BaseScraper]] = {
     'intel': IntelScraper,
     'oracle': OracleScraper,
@@ -22,6 +23,7 @@ SCRAPER_REGISTRY: Dict[str, Type[BaseScraper]] = {
     'android': AndroidScraper,
     'schneider': SchneiderScraper,
     'cisco': CiscoScraper,
+    'debian': DebianScraper,
 }
 
 class ScraperManager:

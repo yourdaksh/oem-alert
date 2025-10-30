@@ -61,6 +61,15 @@ oems_config:
     scan_interval_hours: 24
     description: "Cisco Security Advisories"
 
+  debian:
+    name: "Debian"
+    base_url: "https://www.debian.org"
+    vulnerability_url: "https://www.debian.org/security/dsa"
+    rss_url: "https://www.debian.org/security/dsa.rdf"
+    scraper_class: "DebianScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Debian Security Advisories"
 
 
 # Severity mapping for standardization
