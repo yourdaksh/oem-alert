@@ -8,6 +8,7 @@ from scrapers.oracle import OracleScraper
 from scrapers.ubuntu import UbuntuScraper
 from scrapers.android import AndroidScraper
 from scrapers.schneider import SchneiderScraper
+from scrapers.cisco import CiscoScraper
 from config import get_all_oems, get_enabled_oems
 import logging
 
@@ -20,6 +21,7 @@ SCRAPER_REGISTRY: Dict[str, Type[BaseScraper]] = {
     'ubuntu': UbuntuScraper,
     'android': AndroidScraper,
     'schneider': SchneiderScraper,
+    'cisco': CiscoScraper,
 }
 
 class ScraperManager:

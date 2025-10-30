@@ -4,7 +4,7 @@ oems_config:
     name: "Intel"
     base_url: "https://www.intel.com"
     vulnerability_url: "https://www.intel.com/content/www/us/en/security-center/default.html"
-    rss_url: "https://www.intel.com/content/www/us/en/security-center/rss.xml"
+    rss_url: "https://www.intel.com/content/www/us/en/security-center/default.html"
     scraper_class: "IntelScraper"
     enabled: true
     scan_interval_hours: 24
@@ -14,7 +14,7 @@ oems_config:
     name: "Oracle"
     base_url: "https://www.oracle.com"
     vulnerability_url: "https://www.oracle.com/security-alerts/"
-    rss_url: "https://www.oracle.com/security-alerts/rss.xml"
+    rss_url: "https://www.oracle.com/security-alerts/"
     scraper_class: "OracleScraper"
     enabled: true
     scan_interval_hours: 24
@@ -49,6 +49,19 @@ oems_config:
     enabled: true
     scan_interval_hours: 24
     description: "Schneider Electric Security Notifications"
+
+
+  cisco:
+    name: "Cisco"
+    base_url: "https://tools.cisco.com"
+    vulnerability_url: "https://tools.cisco.com/security/center/publicationListing.x"
+    rss_url: "https://tools.cisco.com/security/center/rss.x"
+    scraper_class: "CiscoScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Cisco Security Advisories"
+
+
 
 # Severity mapping for standardization
 severity_mapping:
