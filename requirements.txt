@@ -12,3 +12,7 @@ yagmail==0.15.293
 python-dotenv==1.0.0
 selenium==4.15.2
 openpyxl==3.1.2
+supabase==2.3.4
+psycopg2-binary==2.9.9
+postgrest==0.13.0
+slack-sdk==3.26.1

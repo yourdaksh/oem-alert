@@ -122,7 +122,7 @@ class EmailNotificationService:
         <body>
             <div class="header">
                 <h1>🚨 Vulnerability Alert</h1>
-                <p>OEM Vulnerability Alert Platform</p>
+                <p>Vulnerability Scrapper</p>
             </div>
             
             <div class="content">
@@ -152,7 +152,7 @@ class EmailNotificationService:
             </div>
             
             <div class="footer">
-                <p>This alert was sent by the OEM Vulnerability Alert Platform</p>
+                <p>This alert was sent by the Vulnerability Scrapper</p>
                 <p>To unsubscribe or modify your preferences, please visit the platform dashboard</p>
                 <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
             </div>
@@ -200,7 +200,7 @@ class EmailNotificationService:
             lines.append("")
 
         lines.append("---")
-        lines.append("This alert was sent by the OEM Vulnerability Alert Platform")
+        lines.append("This alert was sent by the Vulnerability Scrapper")
         lines.append(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         return "\n".join(lines)
@@ -260,14 +260,19 @@ class EmailNotificationService:
                 logger.error("Email credentials not configured")
                 return False
             
-            test_subject = "OEM Vulnerability Alert Platform - Test Email"
-            test_content = """
-            This is a test email from the OEM Vulnerability Alert Platform.
+            from datetime import datetime
+            
+            test_subject = "Vulnerability Scrapper - Test Email"
+            test_content = f"""
+            This is a test email from the Vulnerability Scrapper.
             
             If you receive this email, your email configuration is working correctly.
             
             Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             """
+            
+            logger.info(f"Testing email configuration for {self.email_username}")
+            logger.info(f"SMTP Server: {self.smtp_server}:{self.smtp_port}")
             
             success = self._send_email(
                 to_email=self.email_username,  # Send to self for testing
@@ -277,14 +282,16 @@ class EmailNotificationService:
             )
             
             if success:
-                logger.info("Email configuration test successful")
+                logger.info(f"Email configuration test successful - email sent to {self.email_username}")
             else:
-                logger.error("Email configuration test failed")
+                logger.error("Email configuration test failed - _send_email returned False")
             
             return success
             
         except Exception as e:
             logger.error(f"Email configuration test error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
 def create_email_service(db_ops: DatabaseOperations) -> EmailNotificationService:

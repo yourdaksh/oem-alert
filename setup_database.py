@@ -1,9 +1,10 @@
 """
 Database setup and initialization script
+Supports both SQLite and Supabase PostgreSQL
 """
 import os
 import sys
-from database import init_database, engine
+from database import init_database, engine, get_database_type
 from database.models import Base
 import logging
 
@@ -14,7 +15,8 @@ logger = logging.getLogger(__name__)
 def setup_database():
     """Initialize the database with all tables"""
     try:
-        logger.info("Initializing database...")
+        db_type = get_database_type()
+        logger.info(f"Initializing {db_type} database...")
         
         # Create all tables
         Base.metadata.create_all(bind=engine)
@@ -28,10 +30,19 @@ def setup_database():
         
         logger.info(f"Created tables: {tables}")
         
+        if db_type == 'supabase':
+            logger.info("✅ Supabase PostgreSQL database is ready!")
+            logger.info("💡 Make sure your Supabase project has the correct schema permissions.")
+        else:
+            logger.info("✅ SQLite database is ready!")
+        
         return True
         
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
+        if get_database_type() == 'supabase':
+            logger.error("💡 Make sure SUPABASE_DB_URL is correctly configured in your .env file")
+            logger.error("💡 Format: postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres")
         return False
 
 def reset_database():
@@ -57,19 +68,25 @@ def check_database_status():
     """Check database status and table information"""
     try:
         from sqlalchemy import inspect
+        db_type = get_database_type()
         inspector = inspect(engine)
         tables = inspector.get_table_names()
         
         logger.info("Database Status:")
+        logger.info(f"  Database Type: {db_type}")
         logger.info(f"  Tables: {tables}")
         
-        # Check if database file exists
-        db_file = "vulnerability_alerts.db"
-        if os.path.exists(db_file):
-            size = os.path.getsize(db_file)
-            logger.info(f"  Database file: {db_file} ({size} bytes)")
+        if db_type == 'sqlite':
+            # Check if database file exists
+            db_file = "vulnerability_alerts.db"
+            if os.path.exists(db_file):
+                size = os.path.getsize(db_file)
+                logger.info(f"  Database file: {db_file} ({size} bytes)")
+            else:
+                logger.info(f"  Database file: {db_file} (not found)")
         else:
-            logger.info(f"  Database file: {db_file} (not found)")
+            logger.info(f"  Connected to Supabase PostgreSQL")
+            logger.info(f"  Total tables: {len(tables)}")
         
         return True
         

@@ -96,12 +96,18 @@ class DatabaseOperations:
         }
     
     # Subscription operations
-    def add_subscription(self, email: str, oem_name: Optional[str] = None,
+    def add_subscription(self, email: Optional[str] = None, 
+                        slack_webhook_url: Optional[str] = None,
+                        oem_name: Optional[str] = None,
                         product_name: Optional[str] = None,
                         severity_filter: str = "Critical,High") -> Subscription:
-        """Add a new email subscription"""
+        """Add a new email or Slack subscription"""
+        if not email and not slack_webhook_url:
+            raise ValueError("Either email or slack_webhook_url must be provided")
+        
         subscription = Subscription(
             email=email,
+            slack_webhook_url=slack_webhook_url,
             oem_name=oem_name,
             product_name=product_name,
             severity_filter=severity_filter
@@ -222,12 +228,14 @@ class DatabaseOperations:
     
     # Notification log operations
     def log_notification(self, subscription_id: int, vulnerability_id: int,
-                        email_sent: bool = True, error_message: Optional[str] = None):
+                        email_sent: bool = False, slack_sent: bool = False, 
+                        error_message: Optional[str] = None):
         """Log a sent notification"""
         notification_log = NotificationLog(
             subscription_id=subscription_id,
             vulnerability_id=vulnerability_id,
             email_sent=email_sent,
+            slack_sent=slack_sent,
             error_message=error_message
         )
         self.db.add(notification_log)
@@ -236,9 +244,13 @@ class DatabaseOperations:
     def get_notification_stats(self) -> Dict[str, Any]:
         """Get notification statistics"""
         total_notifications = self.db.query(NotificationLog).count()
-        successful_notifications = self.db.query(NotificationLog).filter(
+        successful_email = self.db.query(NotificationLog).filter(
             NotificationLog.email_sent == True
         ).count()
+        successful_slack = self.db.query(NotificationLog).filter(
+            NotificationLog.slack_sent == True
+        ).count()
+        total_successful = successful_email + successful_slack
         
         # Notifications by day (last 30 days)
         recent_cutoff = datetime.now() - timedelta(days=30)
@@ -248,7 +260,9 @@ class DatabaseOperations:
         
         return {
             'total_notifications': total_notifications,
-            'successful_notifications': successful_notifications,
+            'successful_notifications': total_successful,
+            'email_notifications': successful_email,
+            'slack_notifications': successful_slack,
             'recent_notifications': recent_notifications,
-            'success_rate': (successful_notifications / total_notifications * 100) if total_notifications > 0 else 0
+            'success_rate': (total_successful / total_notifications * 100) if total_notifications > 0 else 0
         }

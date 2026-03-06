@@ -12,7 +12,9 @@ from database.operations import DatabaseOperations
 from database.models import Vulnerability, Subscription, ScanLog
 from scrapers import create_scraper_manager
 from email_notifications import create_email_service
+from slack_notifications import create_slack_service
 from config import get_all_oems, get_enabled_oems
+from utils.supabase_client import authenticate_user, is_supabase_enabled, sign_up_user
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
-    page_title="OEM Vulnerability Alert Platform",
-    page_icon="🚨",
+    page_title="Vulnerability Scrapper",
+    page_icon="🔒",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -33,6 +35,12 @@ if 'scraper_manager' not in st.session_state:
     st.session_state.scraper_manager = None
 if 'email_service' not in st.session_state:
     st.session_state.email_service = None
+if 'slack_service' not in st.session_state:
+    st.session_state.slack_service = None
+if 'supabase_session' not in st.session_state:
+    st.session_state.supabase_session = None
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = None
 
 def initialize_services():
     """Initialize database and services"""
@@ -54,6 +62,10 @@ def initialize_services():
             # Initialize email service
             st.session_state.email_service = create_email_service(st.session_state.db_ops)
         
+        if st.session_state.slack_service is None:
+            # Initialize Slack service
+            st.session_state.slack_service = create_slack_service(st.session_state.db_ops)
+        
         return True
     except Exception as e:
         st.error(f"Failed to initialize services: {e}")
@@ -65,37 +77,353 @@ def main():
     st.markdown(
         """
         <style>
-        /* Global Styles */
+        /* Global Dark Theme - Pitch Black with Red & Neon Green */
         html, body, [class*="css"] {
-            background: #0a0a0a !important;
+            background: #000000 !important;
             color: #ffffff !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
         
         /* Main Background */
         .main, .stApp, .block-container {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%) !important;
+            background: #000000 !important;
             color: #ffffff !important;
         }
         
-        /* Simple Button Styling */
+        /* Sidebar Styling */
+        [data-testid="stSidebar"] {
+            background: #0a0a0a !important;
+            border-right: 1px solid #1a1a1a !important;
+        }
+        
+        /* Button Styling - Neon Green */
         .stButton>button {
-            background: #00d4aa !important;
-            color: #ffffff !important;
+            background: linear-gradient(135deg, #00ff41 0%, #00cc33 100%) !important;
+            color: #000000 !important;
             border-radius: 8px !important;
-            border: none !important;
-            padding: 0.5rem 1rem !important;
+            border: 1px solid #00ff41 !important;
+            padding: 0.625rem 1.5rem !important;
+            font-weight: 600 !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
         }
         
         .stButton>button:hover {
-            background: #00a8cc !important;
+            background: linear-gradient(135deg, #00ff41 0%, #00ff66 100%) !important;
+            box-shadow: 0 0 25px rgba(0, 255, 65, 0.6), 0 6px 12px rgba(0, 0, 0, 0.4) !important;
+            transform: translateY(-2px) !important;
         }
         
-        /* Simple Form Styling */
-        .stTextInput>div>input {
-            background: rgba(20, 20, 20, 0.9) !important;
+        /* Button Text and Labels */
+        .stButton>button * {
+            color: #000000 !important;
+        }
+        
+        .stButton label {
             color: #ffffff !important;
-            border: 1px solid #00d4aa !important;
-            border-radius: 4px !important;
+        }
+        
+        /* Text under buttons */
+        .stButton + p,
+        .stButton + div,
+        .stButton ~ p,
+        .stButton ~ div {
+            color: #ffffff !important;
+        }
+        
+        /* All text elements near buttons */
+        [data-testid="stButton"] + *,
+        [data-testid="stButton"] ~ * {
+            color: #ffffff !important;
+        }
+        
+        /* Button container text */
+        .stButton {
+            color: #ffffff !important;
+        }
+        
+        .stButton * {
+            color: inherit !important;
+        }
+        
+        /* Ensure button labels are white */
+        .element-container:has(.stButton) label,
+        .element-container:has(.stButton) p,
+        .element-container:has(.stButton) div {
+            color: #ffffff !important;
+        }
+        
+        /* Input Field Styling */
+        .stTextInput>div>div>input {
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+            border-radius: 6px !important;
+            padding: 0.5rem 0.75rem !important;
+        }
+        
+        .stTextInput>div>div>input:focus {
+            border-color: #00ff41 !important;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.3) !important;
+            background: #0f0f0f !important;
+        }
+        
+        /* Selectbox Styling */
+        .stSelectbox>div>div>select {
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+            border-radius: 6px !important;
+        }
+        
+        /* Success/Error Messages */
+        .stSuccess {
+            background: rgba(0, 255, 65, 0.15) !important;
+            color: #00ff41 !important;
+            border-left: 4px solid #00ff41 !important;
+            border-radius: 6px !important;
+        }
+        
+        .stError {
+            background: rgba(255, 0, 0, 0.15) !important;
+            color: #ff3333 !important;
+            border-left: 4px solid #ff3333 !important;
+            border-radius: 6px !important;
+        }
+        
+        .stInfo {
+            background: rgba(0, 255, 65, 0.1) !important;
+            color: #00ff41 !important;
+            border-left: 4px solid #00ff41 !important;
+            border-radius: 6px !important;
+        }
+        
+        /* Dataframe Styling */
+        .dataframe {
+            background: #0a0a0a !important;
+            border: 1px solid #1a1a1a !important;
+            border-radius: 8px !important;
+            color: #ffffff !important;
+        }
+        
+        /* Tabs Styling */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+            background: #0a0a0a !important;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            border-radius: 8px 8px 0 0;
+            padding: 0.75rem 1.5rem;
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+        }
+        
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            background: #000000 !important;
+            border-bottom: 2px solid #00ff41 !important;
+            color: #00ff41 !important;
+        }
+        
+        /* Metric Cards */
+        [data-testid="stMetricValue"] {
+            font-size: 2rem !important;
+            font-weight: 700 !important;
+            color: #00ff41 !important;
+        }
+        
+        /* Headers */
+        h1, h2, h3 {
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            text-shadow: 0 0 10px rgba(0, 255, 65, 0.3) !important;
+        }
+        
+        /* Links */
+        a {
+            color: #00ff41 !important;
+        }
+        
+        a:hover {
+            color: #00ff66 !important;
+            text-shadow: 0 0 8px rgba(0, 255, 65, 0.5) !important;
+        }
+        
+        /* Sidebar Text Colors */
+        [data-testid="stSidebar"] * {
+            color: #ffffff !important;
+        }
+        
+        [data-testid="stSidebar"] label {
+            color: #cccccc !important;
+            font-weight: 500 !important;
+        }
+        
+        /* Selectbox Labels */
+        label {
+            color: #ffffff !important;
+            font-weight: 500 !important;
+        }
+        
+        /* Subheader Styling */
+        h3, h4, h5, h6 {
+            color: #ffffff !important;
+        }
+        
+        /* Paragraph Text */
+        p {
+            color: #ffffff !important;
+        }
+        
+        /* All text elements */
+        div, span, p, label, small {
+            color: #ffffff !important;
+        }
+        
+        /* Text that might appear grey */
+        .element-container p,
+        .element-container div,
+        .element-container span {
+            color: #ffffff !important;
+        }
+        
+        /* Streamlit write output */
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] div,
+        [data-testid="stMarkdownContainer"] span {
+            color: #ffffff !important;
+        }
+        
+        /* Table/Dataframe Styling */
+        table {
+            background: #0a0a0a !important;
+            color: #ffffff !important;
+        }
+        
+        th {
+            background: #1a1a1a !important;
+            color: #00ff41 !important;
+            font-weight: 600 !important;
+            border: 1px solid #333333 !important;
+        }
+        
+        td {
+            background: #0a0a0a !important;
+            color: #ffffff !important;
+            border: 1px solid #1a1a1a !important;
+        }
+        
+        /* Expander Styling */
+        .streamlit-expanderHeader {
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            background: #1a1a1a !important;
+        }
+        
+        /* Warning/Info Boxes */
+        .stWarning {
+            background: rgba(255, 200, 0, 0.15) !important;
+            color: #ffcc00 !important;
+            border-left: 4px solid #ffcc00 !important;
+            border-radius: 6px !important;
+        }
+        
+        /* Slider Styling */
+        .stSlider label {
+            color: #ffffff !important;
+        }
+        
+        /* Multiselect Styling */
+        .stMultiSelect label {
+            color: #ffffff !important;
+        }
+        
+        /* Number Input Styling */
+        .stNumberInput label {
+            color: #ffffff !important;
+        }
+        
+        .stNumberInput input {
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+        }
+        
+        /* Text Area Styling */
+        textarea {
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+        }
+        
+        /* Checkbox Styling */
+        .stCheckbox label {
+            color: #ffffff !important;
+        }
+        
+        /* Radio Button Styling */
+        .stRadio label {
+            color: #ffffff !important;
+        }
+        
+        /* Spinner Text */
+        .stSpinner > div {
+            color: #00ff41 !important;
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #000000;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #00ff41;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00ff66;
+        }
+        
+        /* Streamlit markdown containers - ensure white text */
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] div:not([style*="color"]),
+        [data-testid="stMarkdownContainer"] span:not([style*="color"]) {
+            color: #ffffff !important;
+        }
+        
+        /* Text elements that might appear grey */
+        .element-container p:not([style*="color"]),
+        .element-container div:not([style*="color"]),
+        .element-container span:not([style*="color"]) {
+            color: #ffffff !important;
+        }
+        
+        /* Text after buttons - ensure white */
+        .stButton + * p,
+        .stButton ~ * p,
+        .stButton + * div:not([style*="color"]),
+        .stButton ~ * div:not([style*="color"]) {
+            color: #ffffff !important;
+        }
+        
+        /* Streamlit write output */
+        [class*="stMarkdown"] p,
+        [class*="stMarkdown"] div:not([style*="color"]) {
+            color: #ffffff !important;
+        }
+        
+        /* Ensure regular text is white, but preserve styled elements */
+        p:not([style*="color"]),
+        div:not([style*="color"]):not(.stButton):not([class*="st"]) {
+            color: #ffffff !important;
         }
         </style>
         """,
@@ -110,11 +438,11 @@ def main():
   
         st.markdown(
             """
-            <div style='text-align: center; padding: 2rem 0;'>
-                <h1 style='color: #00d4aa; font-size: 2rem; margin-bottom: 1rem;'>
-                    🚨 OEM VULNERABILITY ALERT PLATFORM
+            <div style='text-align: center; padding: 3rem 0 2rem 0;'>
+                <h1 style='color: #ffffff; font-size: 2.5rem; margin-bottom: 0.75rem; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 0 20px rgba(0, 255, 65, 0.5);'>
+                    Vulnerability Scrapper
                 </h1>
-                <p style='color: #a0a0a0; margin-bottom: 2rem;'>
+                <p style='color: #cccccc; margin-bottom: 2rem; font-size: 1.1rem; font-weight: 400;'>
                     Monitor critical vulnerabilities from major IT/OT OEMs
                 </p>
             </div>
@@ -128,43 +456,148 @@ def main():
         with col2:
             st.markdown(
                 """
-                <div style='background: rgba(20, 20, 20, 0.9); border-radius: 10px; padding: 2rem; margin: 2rem 0; border: 1px solid #00d4aa;'>
-                    <h2 style='color: #00d4aa; text-align: center; margin-bottom: 2rem;'>SECURE ACCESS</h2>
+                <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 2.5rem; margin: 2rem 0; border: 1px solid #00ff41; box-shadow: 0 0 30px rgba(0, 255, 65, 0.2), 0 4px 6px rgba(0, 0, 0, 0.5);'>
+                    <h2 style='color: #00ff41; text-align: center; margin-bottom: 2rem; font-weight: 700; font-size: 1.75rem; text-shadow: 0 0 15px rgba(0, 255, 65, 0.5);'>Secure Access</h2>
                 </div>
                 """, 
                 unsafe_allow_html=True
             )
             
-            with st.form("login_form", clear_on_submit=False):
-                username = st.text_input(
-                    "👤 Username", 
-                    value="", 
-                    key="login_user",
-                    placeholder="Enter your username"
-                )
-                password = st.text_input(
-                    "🔒 Password", 
-                    type="password", 
-                    value="", 
-                    key="login_pass",
-                    placeholder="Enter your password"
-                )
+            # Check if Supabase is enabled
+            use_supabase_auth = is_supabase_enabled()
+            
+            if use_supabase_auth:
+                # Supabase authentication mode
+                tab1, tab2 = st.tabs(["Sign In", "Sign Up"])
                 
-                col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-                with col_btn2:
-                    submitted = st.form_submit_button(
-                        "🚀 ACCESS PLATFORM", 
-                        type="primary",
-                        use_container_width=True
+                with tab1:
+                    with st.form("login_form", clear_on_submit=False):
+                        email = st.text_input(
+                            "Email", 
+                            value="", 
+                            key="login_email",
+                            placeholder="Enter your email"
+                        )
+                        password = st.text_input(
+                            "Password", 
+                            type="password", 
+                            value="", 
+                            key="login_pass",
+                            placeholder="Enter your password"
+                        )
+                        
+                        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                        with col_btn2:
+                            submitted = st.form_submit_button(
+                                "Sign In", 
+                                type="primary",
+                                use_container_width=True
+                            )
+                        
+                        if submitted:
+                            if email and password:
+                                auth_result = authenticate_user(email, password)
+                                if auth_result:
+                                    st.session_state.authenticated = True
+                                    st.session_state.supabase_session = auth_result.get("session")
+                                    st.session_state.user_email = email
+                                    st.success("Login successful! Initializing platform...")
+                                    st.rerun()
+                                else:
+                                    st.error("Invalid email or password. Please try again.")
+                            else:
+                                st.error("Please enter both email and password.")
+                
+                with tab2:
+                    with st.form("signup_form", clear_on_submit=False):
+                        email = st.text_input(
+                            "Email", 
+                            value="", 
+                            key="signup_email",
+                            placeholder="Enter your email"
+                        )
+                        password = st.text_input(
+                            "Password", 
+                            type="password", 
+                            value="", 
+                            key="signup_pass",
+                            placeholder="Create a password"
+                        )
+                        confirm_password = st.text_input(
+                            "Confirm Password", 
+                            type="password", 
+                            value="", 
+                            key="signup_confirm_pass",
+                            placeholder="Confirm your password"
+                        )
+                        
+                        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                        with col_btn2:
+                            submitted = st.form_submit_button(
+                                "Create Account", 
+                                type="primary",
+                                use_container_width=True
+                            )
+                        
+                        if submitted:
+                            if email and password and confirm_password:
+                                if password != confirm_password:
+                                    st.error("Passwords do not match.")
+                                elif len(password) < 6:
+                                    st.error("Password must be at least 6 characters.")
+                                else:
+                                    # Sign up with redirect URL for email verification
+                                    redirect_url = "http://localhost:8501"
+                                    signup_result = sign_up_user(email, password, redirect_to=redirect_url)
+                                    if signup_result:
+                                        # Check if user needs email verification
+                                        user = signup_result.get("user")
+                                        if user and hasattr(user, 'email_confirmed_at') and user.email_confirmed_at:
+                                            st.success("Account created successfully! You can now sign in.")
+                                            st.session_state.authenticated = True
+                                            st.session_state.supabase_session = signup_result.get("session")
+                                            st.session_state.user_email = email
+                                            st.rerun()
+                                        else:
+                                            st.success("Account created successfully!")
+                                            st.info("Please check your email to verify your account. You can sign in after verification.")
+                                            st.warning("Tip: If email verification is disabled in Supabase, you can sign in immediately.")
+                                    else:
+                                        st.error("Failed to create account. Email may already be registered.")
+                            else:
+                                st.error("Please fill in all fields.")
+            else:
+                # Fallback to simple authentication
+                with st.form("login_form", clear_on_submit=False):
+                    username = st.text_input(
+                        "Username", 
+                        value="", 
+                        key="login_user",
+                        placeholder="Enter your username"
                     )
-                
-                if submitted:
-                    if username == "admin" and password == "admin123":
-                        st.session_state.authenticated = True
-                        st.success("🎉 Login successful! Initializing platform...")
-                        st.rerun()
-                    else:
-                        st.error("❌ Invalid username or password. Please try again.")
+                    password = st.text_input(
+                        "Password", 
+                        type="password", 
+                        value="", 
+                        key="login_pass",
+                        placeholder="Enter your password"
+                    )
+                    
+                    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                    with col_btn2:
+                        submitted = st.form_submit_button(
+                            "Access Platform", 
+                            type="primary",
+                            use_container_width=True
+                        )
+                    
+                    if submitted:
+                        if username == "admin" and password == "admin123":
+                            st.session_state.authenticated = True
+                            st.success("Login successful! Initializing platform...")
+                            st.rerun()
+                        else:
+                            st.error("Invalid username or password. Please try again.")
         
         # Footer removed per request
         st.stop()
@@ -172,13 +605,11 @@ def main():
 
     st.markdown(
         """
-        <div style='text-align: center; padding: 2rem 0; margin-bottom: 2rem;'>
-            <div style='font-size: 3rem; margin-bottom: 1rem; text-shadow: 0 0 20px rgba(0, 212, 170, 0.5);'>🚨</div>
-            <h1 style='color: #00d4aa; font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; 
-                       text-shadow: 0 0 20px rgba(0, 212, 170, 0.3); font-family: "Space Grotesk", sans-serif;'>
-                OEM VULNERABILITY ALERT PLATFORM
+        <div style='text-align: center; padding: 2rem 0; margin-bottom: 2rem; border-bottom: 2px solid #1a1a1a;'>
+            <h1 style='color: #ffffff; font-size: 2.5rem; font-weight: 700; margin-bottom: 0.75rem; letter-spacing: -0.5px; text-shadow: 0 0 20px rgba(0, 255, 65, 0.5);'>
+                Vulnerability Scrapper
             </h1>
-            <div style='color: #a0a0a0; font-size: 1.1rem; font-weight: 300;'>
+            <div style='color: #cccccc; font-size: 1.1rem; font-weight: 400;'>
                 Monitor critical and high-severity vulnerabilities from major IT/OT hardware and software OEMs
             </div>
         </div>
@@ -192,26 +623,25 @@ def main():
 
     st.sidebar.markdown(
         """
-        <div style='text-align: center; padding: 1rem 0; margin-bottom: 2rem;'>
-            <div style='font-size: 2rem; margin-bottom: 0.5rem; text-shadow: 0 0 15px rgba(0, 212, 170, 0.5);'>🎯</div>
-            <h2 style='color: #00d4aa; font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; 
-                       text-shadow: 0 0 10px rgba(0, 212, 170, 0.3); font-family: "Space Grotesk", sans-serif;'>
-                CONTROL CENTER
+        <div style='text-align: center; padding: 1rem 0; margin-bottom: 2rem; border-bottom: 1px solid #1a1a1a;'>
+            <h2 style='color: #00ff41; font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; text-shadow: 0 0 15px rgba(0, 255, 65, 0.5);'>
+                Control Center
             </h2>
         </div>
         """, 
         unsafe_allow_html=True
     )
     
+    user_display = st.session_state.user_email if hasattr(st.session_state, 'user_email') and st.session_state.user_email else "Admin"
     st.sidebar.markdown(
-        """
-        <div style='background: rgba(0, 212, 170, 0.1); border-radius: 12px; padding: 1rem; margin-bottom: 2rem; 
-                    border: 1px solid rgba(0, 212, 170, 0.3);'>
-            <div style='color: #00d4aa; font-weight: 600; text-align: center;'>
-                👋 Welcome, Admin!
+        f"""
+        <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 8px; padding: 1rem; margin-bottom: 2rem; 
+                    border: 1px solid #00ff41; box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);'>
+            <div style='color: #ffffff; font-weight: 600; text-align: center; font-size: 0.95rem;'>
+                Welcome, {user_display.split('@')[0] if '@' in user_display else user_display}!
             </div>
-            <div style='color: #a0a0a0; font-size: 0.9rem; text-align: center; margin-top: 0.5rem;'>
-                System Status: <span style='color: #00d4aa;'>🟢 OPERATIONAL</span>
+            <div style='color: #cccccc; font-size: 0.85rem; text-align: center; margin-top: 0.5rem;'>
+                System Status: <span style='color: #00ff41; font-weight: 700; text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);'>OPERATIONAL</span>
             </div>
         </div>
         """, 
@@ -219,17 +649,8 @@ def main():
     )
     
     page = st.sidebar.selectbox(
-        "🚀 Navigation Menu",
-        ["Dashboard", "Vulnerabilities", "Email Subscriptions", "Manual Scan", "Analytics", "Export Data", "Settings"],
-        format_func=lambda x: {
-            "Dashboard": "📊 Dashboard",
-            "Vulnerabilities": "🔍 Vulnerabilities", 
-            "Email Subscriptions": "📧 Email Subscriptions",
-            "Manual Scan": "🔬 Manual Scan",
-            "Analytics": "📈 Analytics",
-            "Export Data": "📤 Export Data",
-            "Settings": "⚙️ Settings"
-        }[x]
+        "Navigation Menu",
+        ["Dashboard", "Vulnerabilities", "Email Subscriptions", "Manual Scan", "Analytics", "Export Data", "Settings"]
     )
 
 
@@ -253,11 +674,10 @@ def show_dashboard():
     st.markdown(
         """
         <div style='text-align: center; margin-bottom: 3rem;'>
-            <h2 style='color: #00d4aa; font-size: 2rem; font-weight: 600; margin-bottom: 1rem; 
-                       text-shadow: 0 0 15px rgba(0, 212, 170, 0.3); font-family: "Space Grotesk", sans-serif;'>
-                📊 DASHBOARD OVERVIEW
+            <h2 style='color: #ffffff; font-size: 2rem; font-weight: 700; margin-bottom: 0.75rem; text-shadow: 0 0 15px rgba(0, 255, 65, 0.4);'>
+                Dashboard Overview
             </h2>
-            <div style='color: #a0a0a0; font-size: 1rem; font-weight: 300;'>
+            <div style='color: #cccccc; font-size: 1rem; font-weight: 400;'>
                 Real-time vulnerability monitoring and threat intelligence
             </div>
         </div>
@@ -274,9 +694,8 @@ def show_dashboard():
     st.markdown(
         """
         <div style='margin-bottom: 2rem;'>
-            <h3 style='color: #00d4aa; font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; 
-                       text-shadow: 0 0 10px rgba(0, 212, 170, 0.3); font-family: "Space Grotesk", sans-serif;'>
-                🎯 KEY METRICS
+            <h3 style='color: #00ff41; font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; text-shadow: 0 0 10px rgba(0, 255, 65, 0.4);'>
+                Key Metrics
             </h3>
         </div>
         """, 
@@ -288,17 +707,15 @@ def show_dashboard():
     with col1:
         st.markdown(
             f"""
-            <div style='background: linear-gradient(135deg, rgba(30, 30, 30, 0.9) 0%, rgba(50, 50, 50, 0.8) 100%); 
-                        border-radius: 20px; padding: 2rem; text-align: center; 
-                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(255, 99, 71, 0.2);
-                        border: 2px solid rgba(255, 99, 71, 0.3); backdrop-filter: blur(20px);'>
-                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #ff6347; 
-                           text-shadow: 0 0 10px rgba(255, 99, 71, 0.5); font-family: "JetBrains Mono", monospace;'>
+            <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 2rem; text-align: center; 
+                        box-shadow: 0 0 25px rgba(255, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.5); border: 1px solid #ff3333;'>
+                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #ff3333; 
+                           font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-shadow: 0 0 15px rgba(255, 0, 0, 0.6);'>
                     {stats['total_vulnerabilities']}
                 </div>
-                <div style='color: #a0a0a0; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
-                           letter-spacing: 1px; margin-bottom: 0.5rem;'>Total Vulnerabilities</div>
-                <div style='color: #ff6347; font-size: 0.8rem;'>+{stats['recent_vulnerabilities']} (30 days)</div>
+                <div style='color: #cccccc; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
+                           letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Total Vulnerabilities</div>
+                <div style='color: #ff3333; font-size: 0.85rem; font-weight: 500; text-shadow: 0 0 8px rgba(255, 0, 0, 0.4);'>+{stats['recent_vulnerabilities']} (30 days)</div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -307,17 +724,15 @@ def show_dashboard():
     with col2:
         st.markdown(
             f"""
-            <div style='background: linear-gradient(135deg, rgba(30, 30, 30, 0.9) 0%, rgba(50, 50, 50, 0.8) 100%); 
-                        border-radius: 20px; padding: 2rem; text-align: center; 
-                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(255, 193, 7, 0.2);
-                        border: 2px solid rgba(255, 193, 7, 0.3); backdrop-filter: blur(20px);'>
-                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #ffc107; 
-                           text-shadow: 0 0 10px rgba(255, 193, 7, 0.5); font-family: "JetBrains Mono", monospace;'>
+            <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 2rem; text-align: center; 
+                        box-shadow: 0 0 25px rgba(0, 255, 65, 0.3), 0 4px 8px rgba(0, 0, 0, 0.5); border: 1px solid #00ff41;'>
+                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #00ff41; 
+                           font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-shadow: 0 0 15px rgba(0, 255, 65, 0.6);'>
                     {stats['recent_vulnerabilities']}
                 </div>
-                <div style='color: #a0a0a0; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
-                           letter-spacing: 1px; margin-bottom: 0.5rem;'>Recent Vulnerabilities</div>
-                <div style='color: #ffc107; font-size: 0.8rem;'>Last 30 days</div>
+                <div style='color: #cccccc; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
+                           letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Recent Vulnerabilities</div>
+                <div style='color: #00ff41; font-size: 0.85rem; font-weight: 500; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);'>Last 30 days</div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -326,17 +741,15 @@ def show_dashboard():
     with col3:
         st.markdown(
             f"""
-            <div style='background: linear-gradient(135deg, rgba(30, 30, 30, 0.9) 0%, rgba(50, 50, 50, 0.8) 100%); 
-                        border-radius: 20px; padding: 2rem; text-align: center; 
-                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 212, 170, 0.2);
-                        border: 2px solid rgba(0, 212, 170, 0.3); backdrop-filter: blur(20px);'>
-                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #00d4aa; 
-                           text-shadow: 0 0 10px rgba(0, 212, 170, 0.5); font-family: "JetBrains Mono", monospace;'>
+            <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 2rem; text-align: center; 
+                        box-shadow: 0 0 25px rgba(0, 255, 65, 0.3), 0 4px 8px rgba(0, 0, 0, 0.5); border: 1px solid #00ff41;'>
+                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #00ff41; 
+                           font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-shadow: 0 0 15px rgba(0, 255, 65, 0.6);'>
                     {scan_stats['success_rate']:.1f}%
                 </div>
-                <div style='color: #a0a0a0; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
-                           letter-spacing: 1px; margin-bottom: 0.5rem;'>Scan Success Rate</div>
-                <div style='color: #00d4aa; font-size: 0.8rem;'>{scan_stats['successful_scans']}/{scan_stats['total_scans']}</div>
+                <div style='color: #cccccc; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
+                           letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Scan Success Rate</div>
+                <div style='color: #00ff41; font-size: 0.85rem; font-weight: 500; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);'>{scan_stats['successful_scans']}/{scan_stats['total_scans']}</div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -345,17 +758,15 @@ def show_dashboard():
     with col4:
         st.markdown(
             f"""
-            <div style='background: linear-gradient(135deg, rgba(30, 30, 30, 0.9) 0%, rgba(50, 50, 50, 0.8) 100%); 
-                        border-radius: 20px; padding: 2rem; text-align: center; 
-                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(138, 43, 226, 0.2);
-                        border: 2px solid rgba(138, 43, 226, 0.3); backdrop-filter: blur(20px);'>
-                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #8a2be2; 
-                           text-shadow: 0 0 10px rgba(138, 43, 226, 0.5); font-family: "JetBrains Mono", monospace;'>
+            <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 2rem; text-align: center; 
+                        box-shadow: 0 0 25px rgba(0, 255, 65, 0.3), 0 4px 8px rgba(0, 0, 0, 0.5); border: 1px solid #00ff41;'>
+                <div style='font-size: 2.5rem; margin-bottom: 0.5rem; color: #00ff41; 
+                           font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-shadow: 0 0 15px rgba(0, 255, 65, 0.6);'>
                     {notification_stats['total_notifications']}
                 </div>
-                <div style='color: #a0a0a0; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
-                           letter-spacing: 1px; margin-bottom: 0.5rem;'>Email Notifications</div>
-                <div style='color: #8a2be2; font-size: 0.8rem;'>{notification_stats['success_rate']:.1f}% success rate</div>
+                <div style='color: #cccccc; font-weight: 500; font-size: 0.9rem; text-transform: uppercase; 
+                           letter-spacing: 0.5px; margin-bottom: 0.5rem;'>Email Notifications</div>
+                <div style='color: #00ff41; font-size: 0.85rem; font-weight: 500; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);'>{notification_stats['success_rate']:.1f}% success rate</div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -365,9 +776,8 @@ def show_dashboard():
     st.markdown(
         """
         <div style='margin: 3rem 0 2rem 0;'>
-            <h3 style='color: #00d4aa; font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; 
-                       text-shadow: 0 0 10px rgba(0, 212, 170, 0.3); font-family: "Space Grotesk", sans-serif;'>
-                🔍 RECENT CRITICAL & HIGH SEVERITY VULNERABILITIES
+            <h3 style='color: #00ff41; font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; text-shadow: 0 0 10px rgba(0, 255, 65, 0.4);'>
+                Recent Critical & High Severity Vulnerabilities
             </h3>
         </div>
         """, 
@@ -394,47 +804,36 @@ def show_dashboard():
 
         for i, vuln in enumerate(all_recent[:5]):  
             severity_color = {
-                'Critical': '#ff3b30',
-                'High': '#ff9500', 
-                'Medium': '#ffc107',
-                'Low': '#34c759'
-            }.get(vuln.severity_level, '#8e8e93')
+                'Critical': '#ff3333',
+                'High': '#ff6666', 
+                'Medium': '#ffcc00',
+                'Low': '#00ff41'
+            }.get(vuln.severity_level, '#cccccc')
             
-            severity_icon = {
-                'Critical': '🚨',
-                'High': '⚠️',
-                'Medium': '⚡',
-                'Low': 'ℹ️'
-            }.get(vuln.severity_level, '❓')
+            # Removed emoji icons
             
             st.markdown(
                 f"""
-                <div style='background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(30, 30, 30, 0.9) 100%); 
-                            border-radius: 16px; padding: 1.5rem; margin-bottom: 1rem; 
-                            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px {severity_color}20;
-                            border: 2px solid {severity_color}40; backdrop-filter: blur(20px);'>
+                <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; 
+                            box-shadow: 0 0 20px {severity_color}30, 0 4px 8px rgba(0, 0, 0, 0.5); border-left: 4px solid {severity_color};'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;'>
-                        <div style='display: flex; align-items: center; gap: 1rem;'>
-                            <div style='font-size: 1.5rem;'>{severity_icon}</div>
                             <div>
-                                <div style='color: {severity_color}; font-weight: 600; font-size: 1.1rem; 
-                                           text-shadow: 0 0 10px {severity_color}50;'>
+                            <div style='color: {severity_color}; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.25rem; text-shadow: 0 0 10px {severity_color}50;'>
                                     {vuln.severity_level} - {vuln.unique_id}
                                 </div>
-                                <div style='color: #a0a0a0; font-size: 0.9rem;'>{vuln.oem_name}</div>
-                            </div>
+                            <div style='color: #cccccc; font-size: 0.9rem;'>{vuln.oem_name}</div>
                         </div>
                         <div style='text-align: right;'>
-                            <div style='color: #00d4aa; font-weight: 600; font-family: "JetBrains Mono", monospace;'>
+                            <div style='color: #00ff41; font-weight: 700; font-size: 1.1rem; text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);'>
                                 {vuln.cvss_score or 'N/A'}
                             </div>
-                            <div style='color: #a0a0a0; font-size: 0.8rem;'>CVSS</div>
+                            <div style='color: #888888; font-size: 0.8rem;'>CVSS</div>
                         </div>
                     </div>
-                    <div style='color: #ffffff; font-weight: 500; margin-bottom: 0.5rem;'>
+                    <div style='color: #ffffff; font-weight: 500; margin-bottom: 0.5rem; font-size: 1rem;'>
                         {vuln.product_name}
                     </div>
-                    <div style='color: #a0a0a0; font-size: 0.9rem;'>
+                    <div style='color: #cccccc; font-size: 0.9rem;'>
                         Published: {vuln.published_date.strftime('%Y-%m-%d')}
                     </div>
                 </div>
@@ -447,9 +846,8 @@ def show_dashboard():
             st.markdown(
                 """
                 <div style='margin-top: 2rem;'>
-                    <h4 style='color: #00d4aa; font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem; 
-                               text-shadow: 0 0 10px rgba(0, 212, 170, 0.3); font-family: "Space Grotesk", sans-serif;'>
-                        📋 ADDITIONAL VULNERABILITIES
+                    <h4 style='color: #00ff41; font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; text-shadow: 0 0 10px rgba(0, 255, 65, 0.4);'>
+                        Additional Vulnerabilities
                     </h4>
                 </div>
                 """, 
@@ -469,13 +867,12 @@ def show_dashboard():
     else:
         st.markdown(
             """
-            <div style='background: rgba(20, 20, 20, 0.5); border-radius: 16px; padding: 2rem; text-align: center; 
-                        border: 2px solid rgba(0, 212, 170, 0.3);'>
-                <div style='font-size: 2rem; margin-bottom: 1rem; color: #00d4aa;'>✅</div>
-                <div style='color: #00d4aa; font-weight: 600; font-size: 1.2rem; margin-bottom: 0.5rem;'>
+            <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 2rem; text-align: center; 
+                        border: 1px solid #00ff41; box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);'>
+                <div style='color: #00ff41; font-weight: 700; font-size: 1.2rem; margin-bottom: 0.5rem; text-shadow: 0 0 15px rgba(0, 255, 65, 0.5);'>
                     No Recent Critical or High Severity Vulnerabilities
                 </div>
-                <div style='color: #a0a0a0; font-size: 0.9rem;'>
+                <div style='color: #cccccc; font-size: 0.95rem;'>
                     All systems are secure! No new critical or high-severity vulnerabilities found in the last 7 days.
                 </div>
             </div>
@@ -487,9 +884,8 @@ def show_dashboard():
     st.markdown(
         """
         <div style='margin: 3rem 0 2rem 0;'>
-            <h3 style='color: #00d4aa; font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; 
-                       text-shadow: 0 0 10px rgba(0, 212, 170, 0.3); font-family: "Space Grotesk", sans-serif;'>
-                🏢 OEM SCANNER STATUS
+            <h3 style='color: #00ff41; font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; text-shadow: 0 0 10px rgba(0, 255, 65, 0.4);'>
+                OEM Scanner Status
             </h3>
         </div>
         """, 
@@ -503,39 +899,36 @@ def show_dashboard():
     for i, (oem_id, status) in enumerate(scraper_status.items()):
         with cols[i % 3]:
             is_enabled = status['enabled']
-            status_color = '#00d4aa' if is_enabled else '#ff3b30'
-            status_icon = '🟢' if is_enabled else '🔴'
+            status_color = '#00ff41' if is_enabled else '#ff3333'
             status_text = 'ACTIVE' if is_enabled else 'DISABLED'
             
             last_scan = scan_stats['last_scans_by_oem'].get(oem_id, 'Never')
             
             st.markdown(
                 f"""
-                <div style='background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(30, 30, 30, 0.9) 100%); 
-                            border-radius: 16px; padding: 1.5rem; margin-bottom: 1rem; 
-                            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px {status_color}20;
-                            border: 2px solid {status_color}40; backdrop-filter: blur(20px);'>
+                <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; 
+                            box-shadow: 0 0 20px {status_color}30, 0 4px 8px rgba(0, 0, 0, 0.5); border-left: 4px solid {status_color};'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;'>
-                        <div style='font-size: 1.5rem;'>{status_icon}</div>
-                        <div style='color: {status_color}; font-weight: 600; font-size: 0.8rem; 
-                                   text-transform: uppercase; letter-spacing: 1px;'>
+                        <div style='color: {status_color}; font-weight: 700; font-size: 0.85rem; 
+                                   text-transform: uppercase; letter-spacing: 0.5px; padding: 0.25rem 0.75rem;
+                                   background: {status_color}20; border-radius: 6px; text-shadow: 0 0 10px {status_color}50;'>
                             {status_text}
                         </div>
                     </div>
-                    <div style='color: #ffffff; font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem;'>
+                    <div style='color: #ffffff; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.5rem;'>
                         {status['name']}
                     </div>
-                    <div style='color: #a0a0a0; font-size: 0.9rem; margin-bottom: 0.5rem;'>
+                    <div style='color: #cccccc; font-size: 0.9rem; margin-bottom: 0.5rem;'>
                         {status['description']}
                     </div>
-                    <div style='display: flex; justify-content: space-between; margin-top: 1rem;'>
+                    <div style='display: flex; justify-content: space-between; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #1a1a1a;'>
                         <div>
-                            <div style='color: #00d4aa; font-size: 0.8rem; font-weight: 600;'>SCAN INTERVAL</div>
-                            <div style='color: #a0a0a0; font-size: 0.9rem;'>{status['scan_interval_hours']}h</div>
+                            <div style='color: #888888; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>Scan Interval</div>
+                            <div style='color: #00ff41; font-size: 0.95rem; font-weight: 600; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);'>{status['scan_interval_hours']}h</div>
                         </div>
                         <div>
-                            <div style='color: #00d4aa; font-size: 0.8rem; font-weight: 600;'>LAST SCAN</div>
-                            <div style='color: #a0a0a0; font-size: 0.9rem;'>{last_scan}</div>
+                            <div style='color: #888888; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>Last Scan</div>
+                            <div style='color: #ffffff; font-size: 0.95rem; font-weight: 500;'>{last_scan}</div>
                         </div>
                     </div>
                 </div>
@@ -545,7 +938,7 @@ def show_dashboard():
 
 def show_vulnerabilities():
     """Show vulnerabilities with enhanced filtering options"""
-    st.header("🔍 Vulnerability Browser")
+    st.header("Vulnerability Browser")
     
     # Enhanced filters
     col1, col2, col3, col4 = st.columns(4)
@@ -672,17 +1065,17 @@ def show_vulnerabilities():
         st.info("No vulnerabilities found matching your criteria.")
 
 def show_subscriptions():
-    """Show email subscription management"""
-    st.header("📧 Email Subscription Management")
+    """Show email and Slack subscription management"""
+    st.header("Email & Slack Subscription Management")
     db_ops = st.session_state.db_ops
     all_subs = db_ops.get_subscriptions()
     if not all_subs:
         st.markdown(
             """
-            <div style='background: #262626; border-radius: 12px; border-left: 8px solid #00d4aa; padding: 2rem; margin-bottom: 2rem; color: #fff;'>
-                <h3 style='color: #00d4aa;'>No Subscriptions Yet!</h3>
-                <p>For platform email alerts, add a quick test subscription below.
-                   <b>Demo suggestion:</b><br>Email: <b>admin@example.com</b>, OEM: <b>Intel</b>, Severities: <b>Critical, High</b></p>
+            <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; border-left: 4px solid #00ff41; padding: 2rem; margin-bottom: 2rem; border: 1px solid #00ff41; box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);'>
+                <h3 style='color: #00ff41; font-weight: 700; margin-bottom: 1rem; text-shadow: 0 0 15px rgba(0, 255, 65, 0.5);'>No Subscriptions Yet!</h3>
+                <p style='color: #cccccc; line-height: 1.6;'>For platform email alerts, add a quick test subscription below.<br>
+                   <strong style='color: #ffffff;'>Demo suggestion:</strong> Email: <strong style='color: #00ff41;'>admin@example.com</strong>, OEM: <strong style='color: #00ff41;'>Intel</strong>, Severities: <strong style='color: #00ff41;'>Critical, High</strong></p>
             </div>
             """, unsafe_allow_html=True
         )
@@ -694,9 +1087,23 @@ def show_subscriptions():
     demo_sev = ["Critical", "High"] if not all_subs else ["Critical"]
 
     with st.form("add_subscription"):
+        notification_type = st.radio(
+            "Notification Type",
+            ["Email", "Slack", "Both"],
+            horizontal=True
+        )
+        
         col1, col2 = st.columns(2)
         with col1:
-            email = st.text_input("Email Address", value=demo_email)
+            email = st.text_input("Email Address", value=demo_email if notification_type in ["Email", "Both"] else "", 
+                                 disabled=(notification_type == "Slack"))
+            slack_webhook = st.text_input(
+                "Slack Webhook URL", 
+                value="",
+                help="Get webhook URL from Slack: Settings → Apps → Incoming Webhooks",
+                disabled=(notification_type == "Email"),
+                type="password"
+            )
             oem_name = st.selectbox(
                 "OEM (leave blank for all)",
                 ["All"] + list(st.session_state.db_ops.get_vulnerability_stats()['oem_distribution'].keys()),
@@ -711,21 +1118,42 @@ def show_subscriptions():
             )
         submitted = st.form_submit_button("Add Subscription")
         if submitted:
-            if email and severity_filter:
-                oem = None if oem_name == "All" else oem_name
-                severity_str = ",".join(severity_filter)
-                try:
-                    subscription = st.session_state.db_ops.add_subscription(
-                        email=email,
-                        oem_name=oem,
-                        product_name=product_name if product_name else None,
-                        severity_filter=severity_str
-                    )
-                    st.success(f"Subscription added successfully! ID: {subscription.id}")
-                except Exception as e:
-                    st.error(f"Failed to add subscription: {e}")
+            if severity_filter:
+                if notification_type == "Email" and not email:
+                    st.error("Please provide an email address for email subscriptions.")
+                elif notification_type == "Slack" and not slack_webhook:
+                    st.error("Please provide a Slack webhook URL for Slack subscriptions.")
+                elif notification_type == "Both" and (not email or not slack_webhook):
+                    st.error("Please provide both email and Slack webhook URL.")
+                else:
+                    oem = None if oem_name == "All" else oem_name
+                    severity_str = ",".join(severity_filter)
+                    try:
+                        # Add email subscription if needed
+                        if notification_type in ["Email", "Both"]:
+                            email_sub = st.session_state.db_ops.add_subscription(
+                                email=email,
+                                slack_webhook_url=None,
+                                oem_name=oem,
+                                product_name=product_name if product_name else None,
+                                severity_filter=severity_str
+                            )
+                            st.success(f"Email subscription added successfully! ID: {email_sub.id}")
+                        
+                        # Add Slack subscription if needed
+                        if notification_type in ["Slack", "Both"]:
+                            slack_sub = st.session_state.db_ops.add_subscription(
+                                email=None,
+                                slack_webhook_url=slack_webhook,
+                                oem_name=oem,
+                                product_name=product_name if product_name else None,
+                                severity_filter=severity_str
+                            )
+                            st.success(f"Slack subscription added successfully! ID: {slack_sub.id}")
+                    except Exception as e:
+                        st.error(f"Failed to add subscription: {e}")
             else:
-                st.error("Please provide email and select at least one severity level.")
+                st.error("Please select at least one severity level.")
     
     # Manage existing subscriptions
     st.subheader("Manage Existing Subscriptions")
@@ -735,7 +1163,8 @@ def show_subscriptions():
     if subscriptions:
         df_subs = pd.DataFrame([{
             'ID': sub.id,
-            'Email': sub.email,
+            'Email': sub.email or 'N/A',
+            'Slack': 'Yes' if (hasattr(sub, 'slack_webhook_url') and sub.slack_webhook_url) else 'No',
             'OEM': sub.oem_name or 'All',
             'Product': sub.product_name or 'All',
             'Severity': sub.severity_filter,
@@ -764,11 +1193,11 @@ def show_subscriptions():
 
 def show_manual_scan():
     """Show manual scanning interface"""
-    st.header("🔍 Manual Vulnerability Scan")
+    st.header("Manual Vulnerability Scan")
     
     st.subheader("Scan All OEMs")
     
-    if st.button("🚀 Run Full Scan", type="primary"):
+    if st.button("Run Full Scan", type="primary"):
         with st.spinner("Scanning all OEMs for vulnerabilities..."):
             try:
                 db_ops = st.session_state.db_ops
@@ -782,7 +1211,7 @@ def show_manual_scan():
                 new_ids = set()
                 
                 for oem_id, vulnerabilities in results.items():
-                    st.write(f"**{oem_id.title()}:** {len(vulnerabilities)} vulnerabilities found")
+                    st.markdown(f"<p style='color: #ffffff;'><strong>{oem_id.title()}:</strong> {len(vulnerabilities)} vulnerabilities found</p>", unsafe_allow_html=True)
                     
                     # Add vulnerabilities to database
                     for vuln_data in vulnerabilities:
@@ -799,10 +1228,16 @@ def show_manual_scan():
                                 total_new += 1
                                 new_ids.add(uid)
                                 # Send email notifications
-                                notification_results = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
-                                if notification_results['sent'] > 0:
-                                    st.info(f"Sent {notification_results['sent']} email notification{'s' if notification_results['sent'] != 1 else ''} for {uid}.")
-                                total_emails_sent += notification_results['sent']
+                                email_results = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
+                                if email_results['sent'] > 0:
+                                    st.info(f"Sent {email_results['sent']} email notification{'s' if email_results['sent'] != 1 else ''} for {uid}.")
+                                total_emails_sent += email_results['sent']
+                                
+                                # Send Slack notifications
+                                slack_results = st.session_state.slack_service.send_bulk_vulnerability_alerts(vuln)
+                                if slack_results['sent'] > 0:
+                                    st.info(f"Sent {slack_results['sent']} Slack notification{'s' if slack_results['sent'] != 1 else ''} for {uid}.")
+                                total_emails_sent += slack_results['sent']  # Reusing variable for total notifications
                         except Exception as e:
                             logger.error(f"Error adding vulnerability: {e}")
                 total_existing = total_found - total_new
@@ -846,10 +1281,17 @@ def show_manual_scan():
                                 if is_new:
                                     new_count += 1
                                     new_ids.add(uid)
-                                    notif = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
-                                    emails_sent += notif['sent']
-                                    if notif['sent'] > 0:
-                                        st.info(f"Sent {notif['sent']} email notification{'s' if notif['sent'] != 1 else ''} for {uid}.")
+                                    # Send email notifications
+                                    email_notif = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
+                                    emails_sent += email_notif['sent']
+                                    if email_notif['sent'] > 0:
+                                        st.info(f"Sent {email_notif['sent']} email notification{'s' if email_notif['sent'] != 1 else ''} for {uid}.")
+                                    
+                                    # Send Slack notifications
+                                    slack_notif = st.session_state.slack_service.send_bulk_vulnerability_alerts(vuln)
+                                    emails_sent += slack_notif['sent']  # Reusing variable for total notifications
+                                    if slack_notif['sent'] > 0:
+                                        st.info(f"Sent {slack_notif['sent']} Slack notification{'s' if slack_notif['sent'] != 1 else ''} for {uid}.")
                             except Exception as e:
                                 logger.error(f"Error adding vulnerability: {e}")
                         st.success(f"Found {len(vulnerabilities)} vulnerabilities, {new_count} new, {len(vulnerabilities)-new_count} already known.")
@@ -862,7 +1304,7 @@ def show_manual_scan():
 
 def show_analytics():
     """Show analytics and charts"""
-    st.header("📈 Analytics & Insights")
+    st.header("Analytics & Insights")
     
     # Get statistics
     stats = st.session_state.db_ops.get_vulnerability_stats()
@@ -874,7 +1316,15 @@ def show_analytics():
         fig_severity = px.pie(
             values=list(stats['severity_distribution'].values()),
             names=list(stats['severity_distribution'].keys()),
-            title="Vulnerabilities by Severity"
+            title="Vulnerabilities by Severity",
+            color_discrete_sequence=['#ff3333', '#ff6666', '#ffcc00', '#00ff41', '#cccccc']
+        )
+        fig_severity.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='#ffffff',
+            title_font_color='#00ff41',
+            legend_font_color='#cccccc'
         )
         st.plotly_chart(fig_severity, use_container_width=True)
     
@@ -889,7 +1339,15 @@ def show_analytics():
             x=[item[0] for item in sorted_oems],
             y=[item[1] for item in sorted_oems],
             title="Vulnerabilities by OEM",
-            labels={'x': 'OEM', 'y': 'Count'}
+            labels={'x': 'OEM', 'y': 'Count'},
+            color_discrete_sequence=['#00ff41']
+        )
+        fig_oem.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='#ffffff',
+            title_font_color='#00ff41',
+            legend_font_color='#cccccc'
         )
         fig_oem.update_xaxes(tickangle=45)
         st.plotly_chart(fig_oem, use_container_width=True)
@@ -909,7 +1367,15 @@ def show_analytics():
             x=date_counts.index,
             y=date_counts.values,
             title="Vulnerabilities Published Over Time (Last 30 Days)",
-            labels={'x': 'Date', 'y': 'Count'}
+            labels={'x': 'Date', 'y': 'Count'},
+            color_discrete_sequence=['#00ff41']
+        )
+        fig_trend.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='#ffffff',
+            title_font_color='#00ff41',
+            legend_font_color='#cccccc'
         )
         st.plotly_chart(fig_trend, use_container_width=True)
     
@@ -930,7 +1396,7 @@ def show_analytics():
 
 def show_export_data():
     """Show data export functionality"""
-    st.header("📤 Export Data")
+    st.header("Export Data")
     
     st.subheader("Export Vulnerabilities")
     
@@ -997,7 +1463,7 @@ def show_export_data():
             # CSV Export
             csv_data = df_export.to_csv(index=False)
             st.download_button(
-                label="📄 Download CSV",
+                label="Download CSV",
                 data=csv_data,
                 file_name=f"vulnerabilities_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
@@ -1008,7 +1474,7 @@ def show_export_data():
             # JSON Export
             json_data = df_export.to_json(orient='records', indent=2)
             st.download_button(
-                label="📋 Download JSON",
+                label="Download JSON",
                 data=json_data,
                 file_name=f"vulnerabilities_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                 mime="application/json"
@@ -1024,7 +1490,7 @@ def show_export_data():
                 excel_data = output.getvalue()
                 
                 st.download_button(
-                    label="📊 Download Excel",
+                    label="Download Excel",
                     data=excel_data,
                     file_name=f"vulnerabilities_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1076,18 +1542,93 @@ def show_export_data():
 
 def show_settings():
     """Show settings and configuration"""
-    st.header("⚙️ Settings & Configuration")
+    st.header("Settings & Configuration")
     
     # Email configuration
     st.subheader("Email Configuration")
     
-    if st.button("Test Email Configuration"):
-        with st.spinner("Testing email configuration..."):
-            success = st.session_state.email_service.test_email_configuration()
-            if success:
-                st.success("Email configuration test successful!")
-            else:
-                st.error("Email configuration test failed. Check your SMTP settings.")
+    # Check if email service is initialized
+    if st.session_state.email_service is None:
+        st.warning("⚠️ Email service not initialized. Please refresh the page.")
+        if st.button("Initialize Email Service"):
+            try:
+                st.session_state.email_service = create_email_service(st.session_state.db_ops)
+                st.success("✅ Email service initialized!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to initialize email service: {str(e)}")
+    else:
+        # Show current email configuration (masked)
+        email_username = st.session_state.email_service.email_username if st.session_state.email_service.email_username else "Not configured"
+        smtp_server = st.session_state.email_service.smtp_server if st.session_state.email_service.smtp_server else "Not configured"
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Email:** {email_username}")
+        with col2:
+            st.write(f"**SMTP Server:** {smtp_server}")
+        
+        if st.button("Test Email Configuration"):
+            with st.spinner("Testing email configuration..."):
+                try:
+                    # Ensure email service is properly initialized
+                    if st.session_state.email_service is None:
+                        st.session_state.email_service = create_email_service(st.session_state.db_ops)
+                    
+                    # Test the configuration
+                    import logging
+                    logging.basicConfig(level=logging.INFO)
+                    
+                    success = st.session_state.email_service.test_email_configuration()
+                    
+                    if success:
+                        st.success("✅ Email configuration test successful! Check your inbox at " + st.session_state.email_service.email_username)
+                    else:
+                        st.error("❌ Email configuration test failed.")
+                        
+                        # Show configuration details
+                        st.warning("**Current Configuration:**")
+                        st.write(f"- Email: {st.session_state.email_service.email_username}")
+                        st.write(f"- SMTP Server: {st.session_state.email_service.smtp_server}:{st.session_state.email_service.smtp_port}")
+                        st.write(f"- Password: {'✅ Set' if st.session_state.email_service.email_password else '❌ Not set'}")
+                        
+                        st.info("💡 **Troubleshooting Steps:**\n"
+                               "1. Verify your Gmail App Password is correct\n"
+                               "2. Make sure 2-Factor Authentication is enabled\n"
+                               "3. Check that there are no extra spaces in the app password\n"
+                               "4. Verify SMTP settings in your .env file\n"
+                               "5. Check the terminal/console where Streamlit is running for detailed error messages")
+                        
+                        # Try to get more details
+                        try:
+                            import yagmail
+                            test_yag = yagmail.SMTP(
+                                st.session_state.email_service.email_username,
+                                st.session_state.email_service.email_password
+                            )
+                            test_yag.close()
+                            st.info("✅ Direct SMTP connection test passed - issue might be with email sending")
+                        except Exception as smtp_error:
+                            st.error(f"❌ SMTP Connection Error: {str(smtp_error)}")
+                            
+                except Exception as e:
+                    st.error(f"❌ Error testing email configuration: {str(e)}")
+                    st.info("💡 Check the terminal/console for detailed error messages")
+                    import traceback
+                    with st.expander("Show detailed error traceback"):
+                        st.code(traceback.format_exc())
+                    
+                    # Try to diagnose the issue
+                    st.warning("**Diagnostics:**")
+                    try:
+                        if st.session_state.email_service:
+                            st.write(f"- Email service exists: ✅")
+                            st.write(f"- Email username: {st.session_state.email_service.email_username}")
+                            st.write(f"- SMTP server: {st.session_state.email_service.smtp_server}")
+                        else:
+                            st.write("- Email service: ❌ Not initialized")
+                    except:
+                        st.write("- Could not access email service")
     
     # Database information
     st.subheader("Database Information")

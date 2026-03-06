@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "📧 Email Configuration Setup for OEM Vulnerability Alert Platform"
+echo "📧 Email Configuration Setup for Vulnerability Scrapper"
 echo "================================================================="
 echo ""
 echo "This script will help you configure email notifications."

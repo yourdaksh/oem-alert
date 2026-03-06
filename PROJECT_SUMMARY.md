@@ -1,8 +1,8 @@
-# 🚨 OEM Vulnerability Alert Platform - Project Summary
+# 🚨 Vulnerability Scrapper - Project Summary
 
 ## ✅ Project Completed Successfully!
 
-I have successfully built a comprehensive **OEM Vulnerability Alert Platform** that meets all your requirements. Here's what has been delivered:
+I have successfully built a comprehensive **Vulnerability Scrapper** that meets all your requirements. Here's what has been delivered:
 
 ## 🏗️ Project Structure
 

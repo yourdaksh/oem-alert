@@ -1,5 +1,5 @@
 """
-Configuration management for the OEM vulnerability alert system
+Configuration management for the Vulnerability Scrapper system
 """
 import yaml
 import os
@@ -54,6 +54,13 @@ EMAIL_CONFIG = {
     "use_tls": True
 }
 
+# Slack configuration
+SLACK_CONFIG = {
+    "enabled": os.getenv("SLACK_ENABLED", "false").lower() == "true",
+    "webhook_url": os.getenv("SLACK_WEBHOOK_URL", ""),
+    "default_channel": os.getenv("SLACK_DEFAULT_CHANNEL", "#vulnerability-alerts")
+}
+
 # Application configuration
 APP_CONFIG = {
     "database_url": "sqlite:///./vulnerability_alerts.db",
@@ -66,7 +73,7 @@ APP_CONFIG = {
 
 # Streamlit configuration
 STREAMLIT_CONFIG = {
-    "page_title": "OEM Vulnerability Alert Platform",
+    "page_title": "Vulnerability Scrapper",
     "page_icon": "🚨",
     "layout": "wide",
     "initial_sidebar_state": "expanded"

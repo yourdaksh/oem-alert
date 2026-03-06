@@ -1,12 +1,12 @@
 """
 Database initialization and configuration
-SQLite database support
+Supports both SQLite and Supabase PostgreSQL
 """
 import os
 import logging
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import StaticPool, NullPool
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -14,23 +14,51 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+def get_database_type():
+    """Get database type from environment"""
+    return os.getenv('DATABASE_TYPE', 'sqlite').lower()
+
 def get_database_url():
-    """Get SQLite database URL"""
-    sqlite_url = os.getenv('SQLITE_DATABASE_URL', 'sqlite:///vulnerability_alerts.db')
-    logger.info(f"Using SQLite database: {sqlite_url}")
-    return sqlite_url
+    """Get database URL based on configured type"""
+    db_type = get_database_type()
+    
+    if db_type == 'supabase':
+        # Supabase PostgreSQL connection
+        supabase_db_url = os.getenv('SUPABASE_DB_URL')
+        if not supabase_db_url:
+            raise ValueError("SUPABASE_DB_URL environment variable is required when DATABASE_TYPE=supabase")
+        logger.info("Using Supabase PostgreSQL database")
+        return supabase_db_url
+    else:
+        # Default to SQLite
+        sqlite_url = os.getenv('SQLITE_DATABASE_URL', 'sqlite:///vulnerability_alerts.db')
+        logger.info(f"Using SQLite database: {sqlite_url}")
+        return sqlite_url
 
 def create_engine_instance():
-    """Create SQLAlchemy engine for SQLite"""
+    """Create SQLAlchemy engine based on database type"""
     database_url = get_database_url()
+    db_type = get_database_type()
     
-    # SQLite engine
-    engine = create_engine(
-        database_url,
-        echo=False,
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False}
-    )
+    if db_type == 'supabase':
+        # PostgreSQL engine for Supabase
+        engine = create_engine(
+            database_url,
+            echo=False,
+            poolclass=NullPool,  # Supabase handles connection pooling
+            pool_pre_ping=True,  # Verify connections before using
+            connect_args={
+                "sslmode": "require"  # Supabase requires SSL
+            }
+        )
+    else:
+        # SQLite engine
+        engine = create_engine(
+            database_url,
+            echo=False,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False}
+        )
     
     return engine
 
@@ -52,9 +80,12 @@ def init_database():
     """Initialize database tables"""
     try:
         from .models import Base
+        db_type = get_database_type()
+        
+        # Create all tables
         Base.metadata.create_all(bind=engine)
         logger.info("Database initialized successfully!")
-        logger.info("Database type: sqlite")
+        logger.info(f"Database type: {db_type}")
         return True
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
@@ -64,7 +95,12 @@ def test_connection():
     """Test database connection"""
     try:
         with engine.connect() as connection:
-            result = connection.execute("SELECT 1")
+            if get_database_type() == 'supabase':
+                # PostgreSQL syntax
+                result = connection.execute(text("SELECT 1"))
+            else:
+                # SQLite syntax
+                result = connection.execute(text("SELECT 1"))
             logger.info("Database connection test successful")
             return True
     except Exception as e:

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# OEM Alert - Schedule Management Script
+# Vulnerability Scrapper - Schedule Management Script
 # This script helps you easily change the scanning frequency
 
-echo "🕒 OEM Vulnerability Alert - Schedule Manager"
+echo "🕒 Vulnerability Scrapper - Schedule Manager"
 echo "=============================================="
 echo ""
 

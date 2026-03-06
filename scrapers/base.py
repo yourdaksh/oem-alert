@@ -1,5 +1,5 @@
 """
-Base scraper class and utilities for OEM vulnerability scraping
+Base scraper class and utilities for vulnerability scraping
 """
 import requests
 from bs4 import BeautifulSoup

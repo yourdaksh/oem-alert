@@ -1,4 +1,4 @@
-# OEM Vulnerability Alert Platform - Complete Usage Guide
+# Vulnerability Scrapper - Complete Usage Guide
 
 ## 🚀 Quick Start Commands
 

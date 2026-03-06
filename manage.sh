@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# OEM Alert - Quick Management Script
-# Run this script from anywhere to manage your OEM Alert system
+# Vulnerability Scrapper - Quick Management Script
+# Run this script from anywhere to manage your Vulnerability Scrapper system
 
-PROJECT_DIR="/home/spartan/Downloads/oem-alert"
+PROJECT_DIR="/Users/dakshpatil/Downloads/oem-alert-1"
 
-echo "🔧 OEM Vulnerability Alert - Quick Manager"
+echo "🔧 Vulnerability Scrapper - Quick Manager"
 echo "=========================================="
 echo ""
 
