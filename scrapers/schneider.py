@@ -21,44 +21,35 @@ class SchneiderScraper(BaseScraper):
             if not soup:
                 return vulnerabilities
             
-            # Look for the security notifications table
             table = soup.find('table')
             if table:
                 rows = table.find_all('tr')
-                for row in rows[1:]:  # Skip header row
+                for row in rows[1:]:
                     try:
                         cells = row.find_all('td')
                         if len(cells) < 4:
                             continue
                         
-                        # Extract data from table cells
-                        # Based on search results: Last updated | Title | CVE | Description | Products and Versions affected | PDF | CSAF
                         last_updated = cells[0].get_text().strip()
                         title = cells[1].get_text().strip()
                         cve_cell = cells[2].get_text().strip()
                         description = cells[3].get_text().strip()
                         
-                        # Extract CVE IDs from the CVE cell
                         cve_ids = self.extract_cve_ids_from_text(cve_cell)
                         if not cve_ids:
                             continue
                         
-                        # Extract severity from title or description
                         severity = self.extract_schneider_severity(title + " " + description)
                         
-                        # Extract product information
                         product_name = self.extract_schneider_product(title, description)
                         
-                        # Parse published date
                         published_date = datetime.now()
                         parsed_date = self.parse_date(last_updated)
                         if parsed_date:
                             published_date = parsed_date
                         
-                        # Extract CVSS score
                         cvss_score = self.extract_cvss_score(description)
                         
-                        # Create vulnerability record for each CVE
                         for cve_id in cve_ids:
                             vuln_record = self.create_vulnerability_record(
                                 unique_id=cve_id,
@@ -78,7 +69,6 @@ class SchneiderScraper(BaseScraper):
                         logger.error(f"Error parsing Schneider table row: {e}")
                         continue
             
-            # Also look for CVE links directly
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}'))
             for cve_link in cve_links:
                 try:
@@ -86,16 +76,13 @@ class SchneiderScraper(BaseScraper):
                     if not cve_id or not re.match(r'CVE-\d{4}-\d{4,7}', cve_id):
                         continue
                     
-                    # Get the parent container for this CVE
                     parent = cve_link.find_parent(['div', 'article', 'section', 'tr', 'td'])
                     if not parent:
                         continue
                     
-                    # Extract title/description
                     title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) or cve_link
                     title = title_elem.get_text().strip() if title_elem else cve_id
                     
-                    # Extract description from surrounding text
                     desc_elem = parent.find(['p', 'div', 'span'], class_=re.compile(r'description|summary|content', re.I))
                     if not desc_elem:
                         desc_text = parent.get_text()
@@ -103,13 +90,10 @@ class SchneiderScraper(BaseScraper):
                     else:
                         description = desc_elem.get_text().strip()
                     
-                    # Extract severity
                     severity = self.extract_schneider_severity(title + " " + description)
                     
-                    # Extract product information
                     product_name = self.extract_schneider_product(title, description)
                     
-                    # Extract published date
                     date_elem = parent.find(['time', 'span', 'div'], class_=re.compile(r'date|published|updated', re.I))
                     published_date = datetime.now()
                     if date_elem:
@@ -118,7 +102,6 @@ class SchneiderScraper(BaseScraper):
                         if parsed_date:
                             published_date = parsed_date
                     
-                    # Extract CVSS score
                     cvss_score = self.extract_cvss_score(parent.get_text())
                     
                     vuln_record = self.create_vulnerability_record(
@@ -168,7 +151,6 @@ class SchneiderScraper(BaseScraper):
         """Extract product name from Schneider vulnerability"""
         text = (title + " " + description).lower()
         
-        # Common Schneider Electric products
         products = [
             'ecostruxure', 'power monitoring expert', 'power operation', 'power scada',
             'modicon', 'altivar', 'telemecanique', 'schneider electric', 'saitel',
@@ -180,7 +162,6 @@ class SchneiderScraper(BaseScraper):
             if product in text:
                 return product.title()
         
-        # Try to extract from title
         words = title.split()
         if len(words) > 1:
             return " ".join(words[:2])

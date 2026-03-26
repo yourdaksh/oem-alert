@@ -14,10 +14,8 @@ def clean_text(text: str) -> str:
     if not text:
         return ""
     
-    # Remove extra whitespace and newlines
     text = re.sub(r'\s+', ' ', text.strip())
     
-    # Remove HTML entities
     text = text.replace('&nbsp;', ' ')
     text = text.replace('&amp;', '&')
     text = text.replace('&lt;', '<')
@@ -30,9 +28,9 @@ def clean_text(text: str) -> str:
 def extract_version_numbers(text: str) -> List[str]:
     """Extract version numbers from text"""
     version_patterns = [
-        r'\d+\.\d+(?:\.\d+)?(?:\.\d+)?',  # Standard version format
-        r'v\d+\.\d+(?:\.\d+)?',           # Version with v prefix
-        r'version\s+\d+\.\d+(?:\.\d+)?',  # Version with word prefix
+        r'\d+\.\d+(?:\.\d+)?(?:\.\d+)?',
+        r'v\d+\.\d+(?:\.\d+)?',
+        r'version\s+\d+\.\d+(?:\.\d+)?',
     ]
     
     versions = []
@@ -40,11 +38,10 @@ def extract_version_numbers(text: str) -> List[str]:
         matches = re.findall(pattern, text, re.IGNORECASE)
         versions.extend(matches)
     
-    return list(set(versions))  # Remove duplicates
+    return list(set(versions))
 
 def parse_cvss_score(text: str) -> Optional[float]:
     """Parse CVSS score from text"""
-    # Look for CVSS scores in various formats
     patterns = [
         r'CVSS:3\.\d/(\d+\.\d+)',
         r'CVSS\s+Score:\s*(\d+\.\d+)',
@@ -67,7 +64,6 @@ def normalize_product_name(product_name: str) -> str:
     if not product_name:
         return "Unknown Product"
     
-    # Common product name normalizations
     normalizations = {
         'windows': 'Windows',
         'office': 'Office',
@@ -114,12 +110,10 @@ def normalize_product_name(product_name: str) -> str:
         if key in product_lower:
             return value
     
-    # If no normalization found, return title case
     return product_name.title()
 
 def extract_affected_versions(description: str) -> Optional[str]:
     """Extract affected versions from vulnerability description"""
-    # Look for version ranges and affected versions
     version_patterns = [
         r'versions?\s+([0-9\.\s,\-and]+)',
         r'affected\s+versions?\s+([0-9\.\s,\-and]+)',
@@ -137,21 +131,17 @@ def extract_affected_versions(description: str) -> Optional[str]:
 
 def create_unique_id_from_text(text: str, oem_name: str) -> str:
     """Create a unique ID from text when CVE is not available"""
-    # Create a hash-based ID
     import hashlib
     
-    # Clean the text and create hash
-    clean_text_str = clean_text(text)[:100]  # Limit length
+    clean_text_str = clean_text(text)[:100]
     hash_obj = hashlib.md5(f"{oem_name}-{clean_text_str}".encode())
     
-    # Create ID in format: OEM-HASH
     return f"{oem_name.upper()}-{hash_obj.hexdigest()[:8]}"
 
 def validate_vulnerability_data(vuln_data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and clean vulnerability data"""
     required_fields = ['unique_id', 'product_name', 'oem_name', 'severity_level', 'vulnerability_description', 'published_date']
     
-    # Check required fields
     for field in required_fields:
         if field not in vuln_data or not vuln_data[field]:
             logger.warning(f"Missing required field: {field}")
@@ -163,17 +153,14 @@ def validate_vulnerability_data(vuln_data: Dict[str, Any]) -> Dict[str, Any]:
             elif field == 'published_date':
                 vuln_data[field] = datetime.now()
     
-    # Clean text fields
     text_fields = ['product_name', 'vulnerability_description', 'mitigation_strategy']
     for field in text_fields:
         if field in vuln_data and vuln_data[field]:
             vuln_data[field] = clean_text(vuln_data[field])
     
-    # Normalize product name
     if 'product_name' in vuln_data:
         vuln_data['product_name'] = normalize_product_name(vuln_data['product_name'])
     
-    # Extract affected versions if not provided
     if 'affected_versions' not in vuln_data or not vuln_data['affected_versions']:
         description = vuln_data.get('vulnerability_description', '')
         affected_versions = extract_affected_versions(description)
@@ -234,25 +221,21 @@ def create_summary_statistics(vulnerabilities: List[Dict[str, Any]]) -> Dict[str
             'recent_count': 0
         }
     
-    # Count by severity
     severity_counts = {}
     for vuln in vulnerabilities:
         severity = vuln.get('severity_level', 'Unknown')
         severity_counts[severity] = severity_counts.get(severity, 0) + 1
     
-    # Count by OEM
     oem_counts = {}
     for vuln in vulnerabilities:
         oem = vuln.get('oem_name', 'Unknown')
         oem_counts[oem] = oem_counts.get(oem, 0) + 1
     
-    # Count by product
     product_counts = {}
     for vuln in vulnerabilities:
         product = vuln.get('product_name', 'Unknown')
         product_counts[product] = product_counts.get(product, 0) + 1
     
-    # Count recent vulnerabilities (last 7 days)
     recent_cutoff = datetime.now() - timedelta(days=7)
     recent_count = 0
     for vuln in vulnerabilities:

@@ -1,18 +1,32 @@
-# Python
+.env
+.env.local
+
 __pycache__/
 *.py[cod]
+*.pyc
 *$py.class
+
 venv/
+venv_new/
 .venv/
 env/
-.env
 
-# Database
 *.db
+*.db-shm
+*.db-wal
 
-# IDEs
+scraper.log
+*.log
+
+.DS_Store
 .vscode/
 .idea/
 
-# OS
-.DS_Store
+node_modules/
+.next/
+*.tsbuildinfo
+
+frontend/.env.local
+frontend/.env
+
+.vercel

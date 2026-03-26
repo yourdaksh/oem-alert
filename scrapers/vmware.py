@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-from scrapers.base import RSSScraper
-import re
-=======
 """
 VMware Security Advisories scraper
 """
@@ -12,30 +8,11 @@ from scrapers.base import RSSScraper
 import logging
 
 logger = logging.getLogger(__name__)
->>>>>>> origin/main
 
 class VMwareScraper(RSSScraper):
     """Scraper for VMware Security Advisories"""
     
-<<<<<<< HEAD
-    def extract_product_name(self, title: str, description: str) -> str:
-        """Extract product from VMware advisory"""
-        # Titles: "VMSA-2024-0001: VMware vCenter Server updates address..."
-        
-        match = re.search(r'VMware\s+([a-zA-Z0-9\s]+?)(?:updates|addresses|vulnerability)', title, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-            
-        return super().extract_product_name(title, description)
 
-    def scrape_vulnerabilities(self):
-        """Scrape vulnerabilities from RSS feed"""
-        rss_url = self.oem_config.get('rss_url')
-        if not rss_url:
-            return []
-        
-        return self.parse_rss_feed(rss_url)
-=======
     def scrape_vulnerabilities(self) -> List[Dict[str, Any]]:
         """Scrape VMware vulnerabilities"""
         vulnerabilities = []
@@ -57,7 +34,6 @@ class VMwareScraper(RSSScraper):
             vmsa_pattern = re.compile(r'VMSA-\d{4}-\d{4,7}')
             processed_ids = set()
             
-            # Look for CVE entries or advisory links
             cve_links = soup.find_all('a', href=re.compile(r'(CVE-\d{4}-\d{4,7}|VMSA-\d{4}-\d{4,7})', re.I))
             
             for link in cve_links[:50]:
@@ -65,7 +41,6 @@ class VMwareScraper(RSSScraper):
                     link_text = link.text.strip()
                     href = link.get('href', '')
                     
-                    # Extract CVE or VMSA ID
                     cve_match = cve_pattern.search(link_text + " " + href)
                     vmsa_match = vmsa_pattern.search(link_text + " " + href)
                     
@@ -115,7 +90,6 @@ class VMwareScraper(RSSScraper):
                     logger.error(f"Error parsing VMware advisory: {e}")
                     continue
             
-            # Also look for CVE text in page content
             cve_texts = soup.find_all(string=cve_pattern)
             for cve_text in cve_texts[:50]:
                 try:
@@ -189,4 +163,3 @@ class VMwareScraper(RSSScraper):
                 return product.title()
         
         return "VMware Product"
->>>>>>> origin/main

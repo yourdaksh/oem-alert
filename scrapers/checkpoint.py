@@ -32,7 +32,6 @@ class CheckPointScraper(RSSScraper):
             cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
             processed_cves = set()
             
-            # Look for CVE in links first
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I))
             for cve_link in cve_links[:100]:
                 try:
@@ -88,7 +87,6 @@ class CheckPointScraper(RSSScraper):
                     logger.error(f"Error parsing Check Point CVE link: {e}")
                     continue
             
-            # Also look for CVE text in page content
             cve_texts = soup.find_all(string=cve_pattern)
             
             for cve_text in cve_texts[:100]:

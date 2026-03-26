@@ -1,29 +1,3 @@
-<<<<<<< HEAD
-from scrapers.base import RSSScraper
-import re
-
-class FortinetScraper(RSSScraper):
-    """Scraper for FortiGuard Labs PSIRT (Fortinet)"""
-    
-    def extract_product_name(self, title: str, description: str) -> str:
-        """Extract product from Fortinet advisory"""
-        # Titles: "FortiClientMac - Arbitrary file deletion"
-        # "FortiOS - Out-of-bounds Write in HTTP daemon"
-        
-        parts = title.split(' - ')
-        if len(parts) > 1:
-            return parts[0].strip()
-            
-        return super().extract_product_name(title, description)
-
-    def scrape_vulnerabilities(self):
-        """Scrape vulnerabilities from RSS feed"""
-        rss_url = self.oem_config.get('rss_url')
-        if not rss_url:
-            return []
-        
-        return self.parse_rss_feed(rss_url)
-=======
 """
 Fortinet PSIRT Advisories scraper
 """
@@ -58,7 +32,6 @@ class FortinetScraper(RSSScraper):
             cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
             processed_cves = set()
             
-            # Look for CVE entries or advisory links
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I))
             
             for cve_link in cve_links[:50]:
@@ -112,7 +85,6 @@ class FortinetScraper(RSSScraper):
                     logger.error(f"Error parsing Fortinet CVE: {e}")
                     continue
             
-            # Also look for CVE text in page content
             cve_texts = soup.find_all(string=cve_pattern)
             for cve_text in cve_texts[:50]:
                 try:
@@ -186,4 +158,3 @@ class FortinetScraper(RSSScraper):
                 return product.title()
         
         return "Fortinet Product"
->>>>>>> origin/main

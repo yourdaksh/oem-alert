@@ -16,12 +16,10 @@ class ApacheScraper(RSSScraper):
         """Scrape Apache vulnerabilities"""
         vulnerabilities = []
         
-        # Try RSS feed first
         rss_url = self.oem_config.get('rss_url')
         if rss_url:
             vulnerabilities.extend(self.parse_rss_feed(rss_url))
         
-        # Also scrape the main page
         vuln_url = self.oem_config.get('vulnerability_url')
         if vuln_url:
             soup = self.get_page(vuln_url)
@@ -38,7 +36,6 @@ class ApacheScraper(RSSScraper):
             cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
             processed_cves = set()
             
-            # Look for CVE in links first
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I))
             for cve_link in cve_links[:100]:
                 try:
@@ -94,7 +91,6 @@ class ApacheScraper(RSSScraper):
                     logger.error(f"Error parsing Apache CVE link: {e}")
                     continue
             
-            # Also look for CVE text in page content
             cve_texts = soup.find_all(string=cve_pattern)
             
             for cve_text in cve_texts[:100]:

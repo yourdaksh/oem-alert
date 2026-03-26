@@ -16,7 +16,6 @@ class MicrosoftScraper(RSSScraper):
         """Scrape Microsoft vulnerabilities"""
         vulnerabilities = []
         
-        # Scrape the MSRC update guide page
         vuln_url = self.oem_config.get('vulnerability_url')
         if vuln_url:
             soup = self.get_page(vuln_url)
@@ -30,16 +29,13 @@ class MicrosoftScraper(RSSScraper):
         vulnerabilities = []
         
         try:
-            # Look for CVE entries in links
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I))
             
-            # Also look for CVE text in page content
             cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
             cve_texts = soup.find_all(string=cve_pattern)
             
             processed_cves = set()
             
-            # Process links first
             for cve_link in cve_links[:50]:
                 try:
                     cve_id = cve_link.text.strip() or cve_link.get('href', '').split('/')[-1]
@@ -53,25 +49,20 @@ class MicrosoftScraper(RSSScraper):
                         continue
                     processed_cves.add(cve_id)
                     
-                    # Find parent container
                     parent = cve_link.find_parent(['div', 'section', 'article', 'tr', 'td'])
                     if not parent:
                         continue
                     
-                    # Extract title/description
                     title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'strong'])
                     title = title_elem.text.strip() if title_elem else cve_id
                     
                     desc_elem = parent.find('p') or parent.find('div', class_=re.compile(r'description|summary', re.I))
                     description = desc_elem.text.strip() if desc_elem else title
                     
-                    # Extract severity
                     severity = self.extract_severity_from_text(title + " " + description)
                     
-                    # Extract product
                     product_name = self.extract_product_name(title, description)
                     
-                    # Extract date
                     published_date = datetime.now()
                     date_elem = parent.find('time') or parent.find('span', class_=re.compile(r'date', re.I))
                     if date_elem:
@@ -97,7 +88,6 @@ class MicrosoftScraper(RSSScraper):
                     logger.error(f"Error parsing Microsoft CVE: {e}")
                     continue
             
-            # Process text content for CVEs
             for cve_text in cve_texts[:50]:
                 try:
                     cve_match = cve_pattern.search(cve_text)

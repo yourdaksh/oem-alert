@@ -23,7 +23,6 @@ class AndroidScraper(WebScraper):
             return vulnerabilities
 
         try:
-            # Find monthly bulletin links from the overview page
             monthly_links: List[str] = []
             for a in soup.find_all('a', href=True):
                 href = a['href']
@@ -33,18 +32,15 @@ class AndroidScraper(WebScraper):
                         href = 'https://source.android.com' + href
                     monthly_links.append(href)
 
-            # Deduplicate and limit
             seen = set()
             monthly_links = [l for l in monthly_links if not (l in seen or seen.add(l))][:6]
 
-            # Parse each monthly bulletin table
             for month_url in monthly_links:
                 inner = self.get_page(month_url)
                 if not inner:
                     continue
                 self._parse_android_tables(inner, month_url, vulnerabilities)
 
-            # Fallback: parse current page tables as well
             self._parse_android_tables(soup, vuln_url, vulnerabilities)
 
         except Exception as e:
@@ -100,7 +96,6 @@ class AndroidScraper(WebScraper):
             except Exception as e:
                 logger.error(f"Error parsing Android table: {e}")
 
-        # Fallback: text-based scan
         for a in soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I)):
             try:
                 cve_id = re.search(r'CVE-\d{4}-\d{4,7}', a.get('href') or a.text, re.I)

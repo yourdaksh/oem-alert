@@ -26,20 +26,16 @@ class SlackNotificationService:
                                vulnerability: Vulnerability) -> bool:
         """Send a vulnerability alert to Slack"""
         try:
-            # Get webhook URL from subscription or use default
             webhook_url = subscription.slack_webhook_url if hasattr(subscription, 'slack_webhook_url') and subscription.slack_webhook_url else self.default_webhook_url
             
             if not webhook_url:
                 logger.warning("No Slack webhook URL configured")
                 return False
             
-            # Create Slack message
             message = self._create_slack_message(vulnerability)
             
-            # Send to Slack
             success = self._send_slack_message(webhook_url, message)
             
-            # Log the notification
             self.db_ops.log_notification(
                 subscription_id=subscription.id,
                 vulnerability_id=vulnerability.id,
@@ -55,7 +51,6 @@ class SlackNotificationService:
             
         except Exception as e:
             logger.error(f"Error sending Slack vulnerability alert: {e}")
-            # Log the failed notification
             self.db_ops.log_notification(
                 subscription_id=subscription.id,
                 vulnerability_id=vulnerability.id,
@@ -66,10 +61,8 @@ class SlackNotificationService:
     
     def send_bulk_vulnerability_alerts(self, vulnerability: Vulnerability) -> Dict[str, int]:
         """Send vulnerability alerts to all matching Slack subscribers"""
-        # Get all subscriptions that match this vulnerability
         subscriptions = self.db_ops.get_subscriptions_for_vulnerability(vulnerability)
         
-        # Filter for Slack subscriptions
         slack_subscriptions = [sub for sub in subscriptions 
                               if hasattr(sub, 'slack_webhook_url') and sub.slack_webhook_url]
         
@@ -100,7 +93,6 @@ class SlackNotificationService:
             'Unknown': '#cccccc'    # Gray
         }.get(vulnerability.severity_level, '#cccccc')
         
-        # Create fields for Slack message
         fields = [
             {
                 "title": "Product",
@@ -137,7 +129,6 @@ class SlackNotificationService:
             "short": True
         })
         
-        # Create attachment
         attachment = {
             "color": severity_color,
             "title": f"{vulnerability.severity_level} Vulnerability: {vulnerability.unique_id}",
@@ -162,7 +153,6 @@ class SlackNotificationService:
                 "short": False
             })
         
-        # Create message payload
         message = {
             "text": f"🚨 New {vulnerability.severity_level} Vulnerability Alert",
             "attachments": [attachment]

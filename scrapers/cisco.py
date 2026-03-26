@@ -17,14 +17,12 @@ class CiscoScraper(WebScraper):
         """Scrape Cisco vulnerabilities"""
         vulnerabilities = []
         
-        # Try the main security page
         vuln_url = self.oem_config.get('vulnerability_url')
         if vuln_url:
             soup = self.get_page(vuln_url, use_selenium=True)
             if soup:
                 vulnerabilities.extend(self.parse_cisco_page(soup))
         
-        # Also try the RSS feed
         rss_url = self.oem_config.get('rss_url')
         if rss_url:
             vulnerabilities.extend(self.parse_cisco_rss(rss_url))
@@ -36,43 +34,34 @@ class CiscoScraper(WebScraper):
         vulnerabilities = []
         
         try:
-            # Look for advisory tables or cards
             tables = soup.find_all('table')
             
             for table in tables:
                 rows = table.find_all('tr')
-                if len(rows) < 2:  # Need at least header and one data row
+                if len(rows) < 2:
                     continue
                 
-                # Skip header row
                 for row in rows[1:]:
                     try:
                         cells = row.find_all(['td', 'th'])
-                        if len(cells) < 3:  # Need at least 3 columns
+                        if len(cells) < 3:
                             continue
                         
-                        # Extract data from cells
                         advisory_text = cells[0].get_text().strip()
                         cve_id = self.extract_cve_id(advisory_text)
                         
                         if not cve_id:
-                            # Try to create a unique ID from advisory text
                             cve_id = f"cisco-{hash(advisory_text) % 100000}"
                         
-                        # Extract severity from the row
                         severity = self.extract_cisco_severity(row)
                         
-                        # Extract product information
                         product_info = cells[1].get_text().strip() if len(cells) > 1 else "Cisco Product"
                         
-                        # Extract published date
                         date_text = cells[2].get_text().strip() if len(cells) > 2 else ""
                         published_date = self.parse_date(date_text) or datetime.now()
                         
-                        # Extract CVSS score
                         cvss_score = self.extract_cvss_score(row.get_text())
                         
-                        # Extract source URL
                         link_elem = row.find('a', href=True)
                         source_url = link_elem['href'] if link_elem else None
                         if source_url and not source_url.startswith('http'):
@@ -119,20 +108,16 @@ class CiscoScraper(WebScraper):
                     link = item.find('link').text if item.find('link') else ""
                     pub_date = item.find('pubDate').text if item.find('pubDate') else ""
                     
-                    # Extract CVE ID
                     cve_id = self.extract_cve_id(title + " " + description)
                     if not cve_id:
                         cve_id = f"cisco-{hash(title) % 100000}"
                     
-                    # Parse published date
                     published_date = self.parse_date(pub_date)
                     if not published_date:
                         published_date = datetime.now()
                     
-                    # Extract severity
                     severity = self.extract_cisco_severity_from_text(title + " " + description)
                     
-                    # Extract product name
                     product_name = self.extract_cisco_product(title, description)
                     
                     vuln_record = self.create_vulnerability_record(
@@ -161,7 +146,6 @@ class CiscoScraper(WebScraper):
         """Extract severity from Cisco vulnerability element"""
         text = element.get_text().lower()
         
-        # Cisco specific severity indicators
         if any(word in text for word in ['critical', 'high severity']):
             return 'Critical'
         elif any(word in text for word in ['high', 'medium-high']):
@@ -181,7 +165,6 @@ class CiscoScraper(WebScraper):
         """Extract product name from Cisco vulnerability"""
         text = (title + " " + description).lower()
         
-        # Common Cisco products
         products = [
             'ios', 'ios xe', 'ios xr', 'nx-os', 'asa', 'firepower',
             'catalyst', 'nexus', 'meraki', 'umbrella', 'duo',
@@ -194,7 +177,6 @@ class CiscoScraper(WebScraper):
             if product in text:
                 return product.title()
         
-        # Try to extract from title
         words = title.split()
         if len(words) > 1:
             return " ".join(words[:2])

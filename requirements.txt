@@ -12,11 +12,12 @@ yagmail==0.15.293
 python-dotenv==1.0.0
 selenium==4.15.2
 openpyxl==3.1.2
-google-generativeai==0.3.2
 fpdf==1.7.2
-openai>=1.0.0
 supabase==2.3.4
 psycopg2-binary==2.9.9
 postgrest==0.13.0
 slack-sdk==3.26.1
-
+fastapi==0.110.0
+uvicorn==0.27.1
+stripe>=7.0.0
+python-multipart==0.0.9

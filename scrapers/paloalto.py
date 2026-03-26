@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-from scrapers.base import RSSScraper
-import re
-=======
 """
 Palo Alto Networks Security Advisories scraper
 """
@@ -12,42 +8,11 @@ from scrapers.base import RSSScraper
 import logging
 
 logger = logging.getLogger(__name__)
->>>>>>> origin/main
 
 class PaloAltoScraper(RSSScraper):
     """Scraper for Palo Alto Networks Security Advisories"""
     
-<<<<<<< HEAD
-    def extract_product_name(self, title: str, description: str) -> str:
-        """Extract product from PAN-OS advisory title"""
-        # Titles are often "PAN-SA-2024-0001 PAN-OS: Vulnerability in..."
-        # Or "PAN-SA-2024-0002 Cortez XDR: ..."
-        
-        parts = title.split(':')
-        if len(parts) > 1:
-            # Check if part before colon contains product info
-            potential_product = parts[0].split(' ')[-1] # Grab last word before colon
-            if 'PAN-OS' in parts[0]:
-                return 'PAN-OS'
-            if 'Cortex' in parts[0]:
-                return 'Cortex XDR'
-                
-        # Fallback to checking description or title for keywords
-        if 'PAN-OS' in title or 'PAN-OS' in description:
-            return 'PAN-OS'
-        if 'GlobalProtect' in title or 'GlobalProtect' in description:
-            return 'GlobalProtect'
-            
-        return super().extract_product_name(title, description)
 
-    def scrape_vulnerabilities(self):
-        """Scrape vulnerabilities from RSS feed"""
-        rss_url = self.oem_config.get('rss_url')
-        if not rss_url:
-            return []
-        
-        return self.parse_rss_feed(rss_url)
-=======
     def scrape_vulnerabilities(self) -> List[Dict[str, Any]]:
         """Scrape Palo Alto vulnerabilities"""
         vulnerabilities = []
@@ -65,7 +30,6 @@ class PaloAltoScraper(RSSScraper):
         vulnerabilities = []
         
         try:
-            # Look for CVE entries or advisory links
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I))
             
             for cve_link in cve_links[:50]:
@@ -73,17 +37,14 @@ class PaloAltoScraper(RSSScraper):
                     cve_text = cve_link.text.strip()
                     href = cve_link.get('href', '')
                     
-                    # Extract CVE ID - ensure it's just the CVE number
                     cve_match = re.search(r'CVE-\d{4}-\d{4,7}', cve_text + " " + href, re.I)
                     if cve_match:
                         cve_id = cve_match.group(0)
                     else:
-                        # Try to extract from href
                         cve_id = href.split('/')[-1] if '/' in href else cve_text
                         if not cve_id.startswith('CVE-'):
                             continue
                     
-                    # Ensure unique_id is max 50 characters (database constraint)
                     cve_id = cve_id[:50]
                     
                     parent = cve_link.find_parent(['div', 'section', 'article', 'tr', 'td'])
@@ -144,4 +105,3 @@ class PaloAltoScraper(RSSScraper):
                 return product.title()
         
         return "Palo Alto Networks Product"
->>>>>>> origin/main

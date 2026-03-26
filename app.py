@@ -16,7 +16,6 @@ from scrapers import create_scraper_manager
 from email_notifications import create_email_service
 from slack_notifications import create_slack_service
 from config import get_all_oems, get_enabled_oems
-from utils.ai_analyst import generate_risk_assessment
 from utils.supabase_client import authenticate_user, is_supabase_enabled, sign_up_user
 
 logging.basicConfig(level=logging.INFO)
@@ -59,7 +58,6 @@ def initialize_services():
             st.session_state.email_service = create_email_service(st.session_state.db_ops)
         
         if st.session_state.slack_service is None:
-            # Initialize Slack service
             st.session_state.slack_service = create_slack_service(st.session_state.db_ops)
         
         return True
@@ -89,14 +87,14 @@ def main():
 
         /* --- Global Variables --- */
         :root {
-            --primary-color: #39FF14;
-            --primary-hover: #32cd14;
-            --accent-red: #FF073A;
-            --bg-dark: #000000;
+            --primary-color:
+            --primary-hover:
+            --accent-red:
+            --bg-dark:
             --bg-card: rgba(10, 10, 10, 0.9);
             --bg-card-border: rgba(57, 255, 20, 0.2);
-            --text-main: #ffffff;
-            --text-muted: #888888;
+            --text-main:
+            --text-muted:
             --font-heading: 'Space Grotesk', sans-serif;
             --font-body: 'Inter', sans-serif;
         }
@@ -127,7 +125,7 @@ def main():
             background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background: #222;
+            background:
             border-radius: 4px; border: 1px solid var(--accent-red);
         }
         ::-webkit-scrollbar-thumb:hover {
@@ -208,19 +206,16 @@ def main():
     )
 
 
-    # Initialize session state
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
     if 'user' not in st.session_state:
         st.session_state.user = None
 
-    # Ensure services are initialized before any UI or Logic
     if not initialize_services():
         st.error("Failed to initialize application services.")
         st.stop()
 
 
-    # check for query params (Invitation Token)
     query_params = st.query_params
     invite_token = query_params.get("token")
 
@@ -231,7 +226,6 @@ def main():
         col1, col2, col3 = st.columns([1, 1.5, 1])
         
         with col2:
-            # Login Header
             st.markdown(
                 """
                 <div style='text-align: center; margin-bottom: 2rem;'>
@@ -243,12 +237,13 @@ def main():
                         Next-Gen Vulnerability Intelligence Platform
                     </p>
                 </div>
+                """,
+                unsafe_allow_html=True
+            )
             
-            # Check if Supabase is enabled
             use_supabase_auth = is_supabase_enabled()
             
             if use_supabase_auth:
-                # Supabase authentication mode
                 tab1, tab2 = st.tabs([" Sign In", " Sign Up"])
                 
                 with tab1:
@@ -280,10 +275,8 @@ def main():
                         st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
 
                         if st.form_submit_button(" Launch Organization", use_container_width=True):
-                            # (Local registration logic here as it creates the org in local DB)
                             org = st.session_state.db_ops.create_organization(org_name)
                             if org:
-                                # For Supabase, we'd also need to sign up the user in Supabase
                                 signup_result = sign_up_user(admin_email, admin_password)
                                 if signup_result:
                                     user = st.session_state.db_ops.create_user(
@@ -299,7 +292,6 @@ def main():
                             else:
                                 st.error("Failed to create organization.")
             else:
-                # --- Invitation Acceptance Flow ---
                 if invite_token:
                     st.info(" You have been invited to join an organization!")
                     invite = st.session_state.db_ops.get_invitation_by_token(invite_token)
@@ -327,60 +319,30 @@ def main():
                     else:
                         st.error("Invalid or expired invitation token.")
 
-                # --- Local Login / Register Flow ---
                 else:
-                    tab1, tab2 = st.tabs([" Login", " Register Org"])
+                    with st.form("login_form"):
+                        email = st.text_input("Email", placeholder="admin@example.com")
+                        password = st.text_input("Password", type="password", placeholder="••••••••")
+                        
+                        st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+                        
+                        if st.form_submit_button("Access Platform", use_container_width=True):
+                            user = st.session_state.db_ops.verify_login(email, password)
+                            if user:
+                                st.session_state.authenticated = True
+                                st.session_state.user = user
+                                st.success(f"Welcome back, {user.username}!")
+                                st.rerun()
+                            else:
+                                st.error("Invalid email or password")
                     
-                    with tab1:
-                        with st.form("login_form"):
-                            email = st.text_input("Email", placeholder="admin@example.com")
-                            password = st.text_input("Password", type="password", placeholder="••••••••")
-                            
-                            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                            
-                            if st.form_submit_button("Access Platform", use_container_width=True):
-                                user = st.session_state.db_ops.verify_login(email, password)
-                                if user:
-                                    st.session_state.authenticated = True
-                                    st.session_state.user = user
-                                    st.success(f"Welcome back, {user.username}!")
-                                    st.rerun()
-                                else:
-                                    st.error("Invalid email or password")
-
-                    with tab2:
-                        with st.form("register_org_form"):
-                            st.write("Create a new Organization")
-                            org_name = st.text_input("Organization Name", placeholder="Acme Corp")
-                            admin_username = st.text_input("Admin Username", placeholder="admin_user")
-                            admin_email = st.text_input("Admin Email", placeholder="admin@acme.com")
-                            admin_password = st.text_input("Admin Password", type="password")
-                            
-                            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-
-                            if st.form_submit_button(" Launch Organization", use_container_width=True):
-                                existing_user = st.session_state.db_ops.get_user_by_email(admin_email)
-                                if existing_user:
-                                    st.error("User with this email already exists.")
-                                else:
-                                    org = st.session_state.db_ops.create_organization(org_name)
-                                    if org:
-                                        user = st.session_state.db_ops.create_user(
-                                            username=admin_username,
-                                            email=admin_email,
-                                            password=admin_password,
-                                            role="Owner",
-                                            org_id=org.id
-                                        )
-                                        # Set owner
-                                        org.owner_id = user.id
-                                        st.session_state.db_ops.db.commit()
-                                        
-                                        st.success("Organization created! Please login.")
-                                    else:
-                                        st.error("Failed to create organization.")
+                    st.markdown(
+                        "<div style='text-align: center; margin-top: 1rem;'>"
+                        "<a href='#' style='color: #39FF14; text-decoration: none; font-size: 0.85rem;'>Forgot password?</a>"
+                        "</div>",
+                        unsafe_allow_html=True
+                    )
             
-            # Footer
             st.markdown(
                 """
                 <div style='text-align: center; margin-top: 2rem; color: #555; font-size: 0.8rem;'>
@@ -392,11 +354,6 @@ def main():
 
         
         st.stop()
-
-
-
-
-
 
 
     st.sidebar.markdown(
@@ -412,11 +369,9 @@ def main():
         unsafe_allow_html=True
     )
     
-    # Get current user for sidebar display
     user = st.session_state.get("user")
     
     if st.session_state.get("authenticated") and not user:
-         # Suppabase user?
          user_display = st.session_state.get("user_email", "Admin")
     else:
          user_display = user.username if user else "Admin"
@@ -436,53 +391,47 @@ def main():
         unsafe_allow_html=True
     )
 
-            </div>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
+
+    nav_options = ["Dashboard", "Kanban Board", "Vulnerabilities", "Email Subscriptions", "Manual Scan", "Analytics", "Export Data", "Settings"]
     
-    if st.sidebar.button(" Logout", use_container_width=True):
-        st.session_state.authenticated = False
-        st.session_state.user = None
-        st.rerun()
-    
-    
-    # Navigation options
-    nav_options = ["Dashboard", "Vulnerabilities", "Email Subscriptions", "Manual Scan", "Analytics", "Export Data", "Settings"]
-    
-    # Restrict Manual Scan for Analysts (Role-Based Access Control)
     if user and user.role == "Analyst":
         if "Manual Scan" in nav_options:
             nav_options.remove("Manual Scan")
     
-    # Add My Tasks if logged in user has org
     user = st.session_state.get("user")
     if user and user.organization_id:
-        nav_options.insert(2, "My Tasks")
+        nav_options.insert(3, "My Tasks")
+        if user.role in ["Owner", "Team Lead"]:
+            nav_options.insert(4, "Team Management")
         
     page = st.sidebar.selectbox(
         " Navigation Menu",
         nav_options,
         format_func=lambda x: {
-            "Dashboard": " Dashboard",
-            "Vulnerabilities": " Vulnerabilities", 
-            "My Tasks": " My Tasks",
-            "Email Subscriptions": " Email Subscriptions",
-            "Manual Scan": " Manual Scan",
-            "Analytics": " Analytics",
-            "Export Data": " Export Data",
-            "Settings": " Settings"
+            "Dashboard": "📊 Dashboard",
+            "Kanban Board": "📋 Kanban Board",
+            "Vulnerabilities": "🛡️ Vulnerabilities", 
+            "My Tasks": "✅ My Tasks",
+            "Team Management": "👥 Team Management",
+            "Email Subscriptions": "📧 Email Subscriptions",
+            "Manual Scan": "🔍 Manual Scan",
+            "Analytics": "📈 Analytics",
+            "Export Data": "📥 Export Data",
+            "Settings": "⚙️ Settings"
         }.get(x, x)
 
     )
 
     if page == "Dashboard":
         show_dashboard()
+    elif page == "Kanban Board":
+        show_kanban_board()
     elif page == "Vulnerabilities":
         show_vulnerabilities()
     elif page == "My Tasks":
         show_my_tasks()
+    elif page == "Team Management":
+        show_team_management()
     elif page == "Email Subscriptions":
         show_subscriptions()
     elif page == "Manual Scan":
@@ -493,6 +442,13 @@ def main():
         show_export_data()
     elif page == "Settings":
         show_settings()
+
+    st.sidebar.markdown("<div style='height: 40px'></div>", unsafe_allow_html=True)
+    st.sidebar.divider()
+    if st.sidebar.button("🚪 Logout", use_container_width=True):
+        st.session_state.authenticated = False
+        st.session_state.user = None
+        st.rerun()
 
 def show_my_tasks():
     """Show vulnerabilities assigned to the current user"""
@@ -522,7 +478,6 @@ def show_my_tasks():
     st.divider()
 
     for vuln in tasks:
-        # Determine status color
         status_color_map = {
             "Open": "#FF073A",
             "Investigating": "#FF9500",
@@ -534,7 +489,6 @@ def show_my_tasks():
         }
         status_color = status_color_map.get(vuln.status, "#00A8CC")
         
-        # Card Visual
         st.markdown(
             f"""
             <div class="glass-card" style="border-left: 4px solid {status_color}; margin-bottom: 1rem; padding: 1.5rem;">
@@ -572,8 +526,6 @@ def show_my_tasks():
         with st.expander(" Update Status & Notes"):
             c1, c2 = st.columns(2)
             with c1:
-                # Add full description availability here
-                # Add full description availability here
                 st.markdown(f"**Full Description:**<br>{vuln.vulnerability_description}", unsafe_allow_html=True)
                 st.divider()
                 
@@ -595,16 +547,239 @@ def show_my_tasks():
 
 from utils.report_generator import generate_pdf_report
 
+
+def show_kanban_board():
+    """Kanban board for visual vulnerability tracking"""
+    st.header("📋 Kanban Board")
+    
+    user = st.session_state.get("user")
+    allowed_oems = get_allowed_oems()
+    db_ops = st.session_state.db_ops
+    
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        all_oems = get_all_oems()
+        filter_oem = st.selectbox("Filter by OEM", ["All"] + list(all_oems.keys()), key="kanban_oem")
+    with col_f2:
+        filter_severity = st.selectbox("Filter by Severity", ["All", "Critical", "High", "Medium", "Low"], key="kanban_sev")
+    with col_f3:
+        if user and user.organization_id:
+            team = db_ops.get_organization_users(user.organization_id)
+            assignee_names = {u.id: u.username for u in team}
+            filter_assignee = st.selectbox("Filter by Assignee", ["All"] + [u.username for u in team], key="kanban_assignee")
+        else:
+            filter_assignee = "All"
+            assignee_names = {}
+    
+    st.divider()
+    
+    kanban_statuses = ["Open",  "Assigned", "In Progress", "Resolved", "Closed"]
+    status_colors = {
+        "Open": "#FF073A",
+        "Assigned": "#00A8CC", 
+        "In Progress": "#FF9500",
+        "Resolved": "#39FF14",
+        "Closed": "#555555"
+    }
+    status_icons = {
+        "Open": "🔴", "Assigned": "🔵", "In Progress": "🟡", "Resolved": "🟢", "Closed": "⚫"
+    }
+    
+    cols = st.columns(len(kanban_statuses))
+    
+    for i, status in enumerate(kanban_statuses):
+        with cols[i]:
+            color = status_colors.get(status, "#888")
+            st.markdown(
+                f"""
+                <div style='background: {color}15; border: 1px solid {color}40; border-radius: 12px; padding: 0.8rem; text-align: center; margin-bottom: 1rem;'>
+                    <span style='font-size: 1.1rem; font-weight: 700; color: {color};'>{status_icons.get(status, '')} {status.upper()}</span>
+                </div>
+                """, unsafe_allow_html=True
+            )
+            
+            vulns = db_ops.get_vulnerabilities_by_status(status, allowed_oems)
+            
+            if filter_oem != "All":
+                vulns = [v for v in vulns if v.oem_name == filter_oem]
+            if filter_severity != "All":
+                vulns = [v for v in vulns if v.severity_level == filter_severity]
+            if filter_assignee != "All":
+                vulns = [v for v in vulns if v.assigned_to and v.assigned_to.username == filter_assignee]
+            
+            st.caption(f"{len(vulns)} items")
+            
+            for vuln in vulns[:15]:
+                sev_colors = {"Critical": "#FF073A", "High": "#FF6B35", "Medium": "#FF9500", "Low": "#39FF14"}
+                sev_color = sev_colors.get(vuln.severity_level, "#888")
+                assignee_name = vuln.assigned_to.username if vuln.assigned_to else "Unassigned"
+                
+                st.markdown(
+                    f"""
+                    <div style='background: rgba(20,20,20,0.9); border: 1px solid {color}30; border-left: 3px solid {sev_color};
+                                border-radius: 8px; padding: 0.7rem; margin-bottom: 0.5rem; font-size: 0.82rem;'>
+                        <div style='display: flex; justify-content: space-between; margin-bottom: 4px;'>
+                            <span style='color: {sev_color}; font-weight: 700; font-size: 0.7rem;'>{vuln.severity_level.upper()}</span>
+                            <span style='color: #666; font-size: 0.7rem;'>{vuln.oem_name}</span>
+                        </div>
+                        <div style='color: #fff; font-weight: 600; margin-bottom: 4px; line-height: 1.3;'>{vuln.product_name[:40]}</div>
+                        <div style='color: #39FF14; font-family: monospace; font-size: 0.7rem; margin-bottom: 4px;'>{vuln.unique_id}</div>
+                        <div style='color: #888; font-size: 0.7rem;'>👤 {assignee_name}</div>
+                    </div>
+                    """, unsafe_allow_html=True
+                )
+                
+                with st.popover(f"✏️ Move", use_container_width=True):
+                    move_options = [s for s in kanban_statuses if s != status]
+                    new_s = st.selectbox("Move to", move_options, key=f"kbn_move_{vuln.id}")
+                    
+                    if user and user.organization_id:
+                        team = db_ops.get_organization_users(user.organization_id)
+                        assign_to = st.selectbox("Assign to", ["--"] + [u.username for u in team], key=f"kbn_assign_{vuln.id}")
+                    else:
+                        assign_to = "--"
+                    
+                    if st.button("Apply", key=f"kbn_apply_{vuln.id}"):
+                        db_ops.update_vulnerability_status(vuln.id, new_s, user.username if user else "Admin")
+                        if assign_to != "--" and user:
+                            target_user = next((u for u in team if u.username == assign_to), None)
+                            if target_user:
+                                db_ops.assign_vulnerability(vuln.id, target_user.id, user.id)
+                        st.rerun()
+
+
+def show_team_management():
+    """Full team management CRM page with role-based access"""
+    user = st.session_state.get("user")
+    if not user:
+        st.error("Please login to access team management.")
+        return
+    
+    is_owner = user.role == "Owner"
+    is_lead = user.role == "Team Lead"
+    
+    st.header("👥 Team Management")
+    
+    if not user.organization_id:
+        st.warning("You are not part of an organization.")
+        return
+    
+    db_ops = st.session_state.db_ops
+    org = db_ops.get_organization(user.organization_id)
+    team_members = db_ops.get_organization_users(user.organization_id)
+    
+    st.markdown(
+        f"""
+        <div class="glass-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+            <h3 style='color: #39FF14; margin: 0 0 0.5rem 0;'>🏢 {org.name if org else 'Unknown'}</h3>
+            <div style='display: flex; gap: 2rem; color: #aaa;'>
+                <span>👥 <strong style='color:#fff;'>{len(team_members)}</strong> Members</span>
+                <span>🛡️ <strong style='color:#fff;'>{org.enabled_oems if org and org.enabled_oems else 'ALL'}</strong> OEMs Tracked</span>
+                <span>📋 Your Role: <strong style='color: #39FF14;'>{user.role}</strong></span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True
+    )
+    
+    st.subheader("Team Members")
+    
+    role_colors = {"Owner": "#FFD700", "Team Lead": "#00A8CC", "Analyst": "#39FF14"}
+    
+    for member in team_members:
+        stats = db_ops.get_user_activity_stats(member.id)
+        role_color = role_colors.get(member.role, "#888")
+        is_self = member.id == user.id
+        
+        with st.container():
+            c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 2])
+            
+            with c1:
+                self_tag = " (You)" if is_self else ""
+                st.markdown(
+                    f"""
+                    <div style='padding: 0.5rem 0;'>
+                        <div style='color: #fff; font-weight: 600;'>{member.username}{self_tag}</div>
+                        <div style='color: #888; font-size: 0.8rem;'>{member.email}</div>
+                    </div>
+                    """, unsafe_allow_html=True
+                )
+            
+            with c2:
+                st.markdown(
+                    f"<span style='background: {role_color}20; color: {role_color}; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; border: 1px solid {role_color}40;'>{member.role}</span>",
+                    unsafe_allow_html=True
+                )
+            
+            with c3:
+                st.markdown(f"<div style='color:#aaa; font-size:0.85rem; padding-top:0.5rem'>📊 {stats['total_assigned']} assigned</div>", unsafe_allow_html=True)
+            
+            with c4:
+                st.markdown(f"<div style='color:#39FF14; font-size:0.85rem; padding-top:0.5rem'>✅ {stats['resolved']} resolved</div>", unsafe_allow_html=True)
+            
+            with c5:
+                if is_owner and not is_self:
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        new_role = st.selectbox("Role", ["Analyst", "Team Lead", "Owner"], key=f"role_{member.id}", 
+                                              index=["Analyst", "Team Lead", "Owner"].index(member.role))
+                        if new_role != member.role:
+                            if st.button("Save", key=f"save_role_{member.id}"):
+                                db_ops.update_user_role(member.id, new_role)
+                                st.success(f"Role updated to {new_role}")
+                                st.rerun()
+                    with col_b:
+                        if st.button("🗑️", key=f"remove_{member.id}", help="Remove member"):
+                            db_ops.remove_user(member.id)
+                            st.success(f"Removed {member.username}")
+                            st.rerun()
+            
+            st.divider()
+    
+    if is_owner:
+        st.subheader("➕ Invite New Member")
+        
+        with st.form("invite_form"):
+            inv_c1, inv_c2, inv_c3 = st.columns([3, 2, 1])
+            with inv_c1:
+                invite_email = st.text_input("Email Address", placeholder="analyst@company.com")
+            with inv_c2:
+                invite_role = st.selectbox("Role", ["Analyst", "Team Lead"])
+            with inv_c3:
+                invite_password = st.text_input("Temp Password", type="password", placeholder="••••••••")
+            
+            if st.form_submit_button("Invite Member", use_container_width=True):
+                if invite_email and invite_password:
+                    existing = db_ops.get_user_by_email(invite_email)
+                    if existing:
+                        st.error(f"{invite_email} is already a member.")
+                    else:
+                        new_user = db_ops.create_user(
+                            username=invite_email,
+                            email=invite_email,
+                            password=invite_password,
+                            role=invite_role,
+                            org_id=user.organization_id
+                        )
+                        if new_user:
+                            st.success(f"✅ {invite_email} added as {invite_role}!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to create user.")
+                else:
+                    st.warning("Please fill in email and temporary password.")
+    
+    elif is_lead:
+        st.info("💡 As a Team Lead, you can view the team and assign tasks. Contact the Owner to manage roles.")
+
+
 def show_dashboard():
     """Show main dashboard with creative overview"""
     
-    # --- Sidebar Report Button ---
     with st.sidebar:
         st.divider()
         st.markdown("###  Reports")
         if st.button("Download Weekly Briefing"):
             with st.spinner("Generating PDF..."):
-                # Fetch recent/open vulnerabilities for report
                 recent_vulns = st.session_state.db_ops.get_vulnerabilities(days_back=30, limit=50)
                 pdf_bytes = generate_pdf_report(recent_vulns)
                 
@@ -614,8 +789,6 @@ def show_dashboard():
                     file_name=f"Executive_Briefing_{datetime.now().strftime('%Y-%m-%d')}.pdf",
                     mime="application/pdf"
                 )
-    # -----------------------------
-
     st.markdown(
         """
         <div style='text-align: center; margin-bottom: 3rem;'>
@@ -638,7 +811,6 @@ def show_dashboard():
     notification_stats = st.session_state.db_ops.get_notification_stats()
     
 
-    # --- Key Metrics ---
     st.markdown("###  Key Performance Indicators")
 
     
@@ -784,7 +956,6 @@ def show_dashboard():
                 unsafe_allow_html=True
             )
         
-        # Show remaining vulnerabilities in a compact table
         if len(all_recent) > 5:
             st.markdown(
                 """
@@ -838,7 +1009,6 @@ def show_dashboard():
     )
     
     scraper_status = st.session_state.scraper_manager.get_scraper_status()
-    # Filter scraper status by allowed OEMs
     if allowed_oems:
         scraper_status = {k: v for k, v in scraper_status.items() if k in allowed_oems}
     
@@ -887,9 +1057,6 @@ def show_dashboard():
 def show_vulnerabilities():
     """Show vulnerabilities with enhanced filtering options"""
     st.header(" Vulnerability Browser")
-=======
-    st.header("Vulnerability Browser")
->>>>>>> origin/main
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -918,7 +1085,6 @@ def show_vulnerabilities():
     with col4:
         search_term = st.text_input("Search (CVE, Product, Description)")
     
-    # Additional filters
     col5, col6, col7 = st.columns(3)
     
     with col5:
@@ -941,16 +1107,15 @@ def show_vulnerabilities():
     if days_back != "All":
         days = int(days_back.split()[0])
     
-    # Get vulnerabilities
     if search_term:
         vulnerabilities = st.session_state.db_ops.search_vulnerabilities(search_term, limit=limit)
     else:
         vulnerabilities = st.session_state.db_ops.get_vulnerabilities(
             oem_name=oem_name,
-            severity=None,  # We'll filter by severity after getting results
+            severity=None,
             days_back=days,
             allowed_oems=allowed_oems,
-            limit=limit * 2  # Get more to filter by severity
+            limit=limit * 2
         )
     
     if severity_filter:
@@ -976,11 +1141,9 @@ def show_vulnerabilities():
     st.subheader(f"Found {len(vulnerabilities)} vulnerabilities")
     
     if vulnerabilities:
-        # Create a dictionary for easy access to full vulnerability objects
         vuln_map = {v.id: v for v in vulnerabilities}
         
         for vuln in vulnerabilities:
-            # Determine status color
             status_color_map = {
                 "Open": "#FF073A",
                 "Investigating": "#FF9500",
@@ -992,7 +1155,6 @@ def show_vulnerabilities():
             }
             status_color = status_color_map.get(vuln.status, "#00A8CC")
             
-            # Card Visual
             st.markdown(
                 f"""
                 <div class="glass-card" style="border-left: 4px solid {status_color}; margin-bottom: 1rem; padding: 1.5rem;">
@@ -1028,7 +1190,6 @@ def show_vulnerabilities():
                 unsafe_allow_html=True
             )
             
-            # Actions Expander
             with st.expander(" Manage & Details"):
                 col1, col2 = st.columns(2)
                 
@@ -1042,7 +1203,6 @@ def show_vulnerabilities():
 
                 st.divider()
                 
-                # --- Assignment & CRM ---
                 user = st.session_state.get("user")
                 if user and user.organization_id:
                     st.divider()
@@ -1054,7 +1214,6 @@ def show_vulnerabilities():
                         else:
                             st.write("Unassigned")
                         
-                        # Only Owner/Lead can assign
                         if user.role in ['Owner', 'Team Lead']:
                             team = st.session_state.db_ops.get_organization_users(user.organization_id)
                             team_map = {u.username: u.id for u in team}
@@ -1073,7 +1232,6 @@ def show_vulnerabilities():
                                     if st.session_state.db_ops.assign_vulnerability(vuln.id, assignee_id, user.id):
                                         st.success(f"Task assigned to {assignee_username} and email sent!")
                                         
-                                        # Send Email Notification
                                         assignee = next((u for u in team if u.id == assignee_id), None)
                                         if assignee:
                                             st.session_state.email_service.send_assignment_email(
@@ -1094,16 +1252,13 @@ def show_vulnerabilities():
 
                 st.divider()
                 
-                # --- Incident Response & AI Analyst ---
+                st.markdown("### 🔄 Status Management")
                 c1, c2 = st.columns([1, 1])
                 
                 with c1:
-                    st.markdown("###  Incident Response")
                     current_status = vuln.status or "Open"
-                    # Add new CRM statuses
                     status_options = ["Open", "Assigned", "In Progress", "Resolved", "Mitigated", "False Positive", "Closed"]
                     
-                    # Ensure current status is in options
                     if current_status not in status_options:
                         status_options.append(current_status)
                         
@@ -1124,26 +1279,13 @@ def show_vulnerabilities():
                         st.rerun()
 
                 with c2:
-                    st.markdown("###  AI Analyst")
-                    if st.button(" Generate Risk Assessment", key=f"ai_{vuln.id}"):
-                        with st.spinner("Analyzing vulnerability..."):
-                            analysis = generate_risk_assessment(vuln.vulnerability_description)
-                            
-                            if "error" in analysis:
-                                st.error(analysis["error"])
-                            else:
-                                if "raw" in analysis:
-                                    st.info(analysis["raw"])
-                                else:
-                                    st.markdown(f"""
-                                    **Impact:** {analysis.get('impact', 'N/A')}
-                                    
-                                    **Attack Vector:** {analysis.get('attack_vector', 'N/A')}
-                                    
-                                    **Suggested Fix:** {analysis.get('fix', 'N/A')}
-                                    """)
+                    resolution_note = st.text_area("Resolution Notes", value=vuln.resolution_notes or "", key=f"vuln_note_{vuln.id}", height=100)
+                    if st.button("💾 Save Notes", key=f"vuln_save_{vuln.id}"):
+                        if st.session_state.db_ops.set_resolution_notes(vuln.id, resolution_note):
+                            st.success("Notes saved!")
+                        else:
+                            st.error("Failed to save notes")
 
-                # --- Audit Trail ---
                 with st.expander(" Audit Trail"):
                     logs = st.session_state.db_ops.get_audit_logs(vuln.id)
                     if logs:
@@ -1219,7 +1361,6 @@ def show_subscriptions():
                     oem = None if oem_name == "All" else oem_name
                     severity_str = ",".join(severity_filter)
                     try:
-                        # Add email subscription if needed
                         if notification_type in ["Email", "Both"]:
                             email_sub = st.session_state.db_ops.add_subscription(
                                 email=email,
@@ -1230,7 +1371,6 @@ def show_subscriptions():
                             )
                             st.success(f"Email subscription added successfully! ID: {email_sub.id}")
                         
-                        # Add Slack subscription if needed
                         if notification_type in ["Slack", "Both"]:
                             slack_sub = st.session_state.db_ops.add_subscription(
                                 email=None,
@@ -1302,7 +1442,6 @@ def show_manual_scan():
                 for oem_id, vulnerabilities in results.items():
                     st.markdown(f"<p style='color: #ffffff;'><strong>{oem_id.title()}:</strong> {len(vulnerabilities)} vulnerabilities found</p>", unsafe_allow_html=True)
                     
-                    # Add vulnerabilities to database
                     for vuln_data in vulnerabilities:
                         try:
                             uid = vuln_data.get('unique_id')
@@ -1316,17 +1455,15 @@ def show_manual_scan():
                             if is_new:
                                 total_new += 1
                                 new_ids.add(uid)
-                                # Send email notifications
                                 email_results = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
                                 if email_results['sent'] > 0:
                                     st.info(f"Sent {email_results['sent']} email notification{'s' if email_results['sent'] != 1 else ''} for {uid}.")
                                 total_emails_sent += email_results['sent']
                                 
-                                # Send Slack notifications
                                 slack_results = st.session_state.slack_service.send_bulk_vulnerability_alerts(vuln)
                                 if slack_results['sent'] > 0:
                                     st.info(f"Sent {slack_results['sent']} Slack notification{'s' if slack_results['sent'] != 1 else ''} for {uid}.")
-                                total_emails_sent += slack_results['sent']  # Reusing variable for total notifications
+                                total_emails_sent += slack_results['sent']
 
                         except Exception as e:
                             logger.error(f"Error adding vulnerability: {e}")
@@ -1371,15 +1508,13 @@ def show_manual_scan():
                                 if is_new:
                                     new_count += 1
                                     new_ids.add(uid)
-                                    # Send email notifications
                                     email_notif = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
                                     emails_sent += email_notif['sent']
                                     if email_notif['sent'] > 0:
                                         st.info(f"Sent {email_notif['sent']} email notification{'s' if email_notif['sent'] != 1 else ''} for {uid}.")
                                     
-                                    # Send Slack notifications
                                     slack_notif = st.session_state.slack_service.send_bulk_vulnerability_alerts(vuln)
-                                    emails_sent += slack_notif['sent']  # Reusing variable for total notifications
+                                    emails_sent += slack_notif['sent']
                                     if slack_notif['sent'] > 0:
                                         st.info(f"Sent {slack_notif['sent']} Slack notification{'s' if slack_notif['sent'] != 1 else ''} for {uid}.")
                             except Exception as e:
@@ -1397,7 +1532,6 @@ def show_analytics():
     st.header(" Analytics & Insights")
 
     
-
     stats = st.session_state.db_ops.get_vulnerability_stats()
     
 
@@ -1580,11 +1714,9 @@ def show_export_data():
             except ImportError:
                 st.warning("Excel export requires openpyxl. Install with: pip install openpyxl")
         
-        # Preview data
         st.subheader("Data Preview")
         st.dataframe(df_export.head(10), use_container_width=True)
     
-    # Export subscriptions
     st.subheader("Export Email Subscriptions")
     
     subscriptions = st.session_state.db_ops.get_subscriptions()
@@ -1629,7 +1761,6 @@ def show_settings():
     
     st.subheader("Email Configuration")
     
-    # Check if email service is initialized
     if st.session_state.email_service is None:
         st.warning("⚠️ Email service not initialized. Please refresh the page.")
         if st.button("Initialize Email Service"):
@@ -1640,7 +1771,6 @@ def show_settings():
             except Exception as e:
                 st.error(f"Failed to initialize email service: {str(e)}")
     else:
-        # Show current email configuration (masked)
         email_username = st.session_state.email_service.email_username if st.session_state.email_service.email_username else "Not configured"
         smtp_server = st.session_state.email_service.smtp_server if st.session_state.email_service.smtp_server else "Not configured"
         
@@ -1653,11 +1783,9 @@ def show_settings():
         if st.button("Test Email Configuration"):
             with st.spinner("Testing email configuration..."):
                 try:
-                    # Ensure email service is properly initialized
                     if st.session_state.email_service is None:
                         st.session_state.email_service = create_email_service(st.session_state.db_ops)
                     
-                    # Test the configuration
                     import logging
                     logging.basicConfig(level=logging.INFO)
                     
@@ -1668,7 +1796,6 @@ def show_settings():
                     else:
                         st.error("❌ Email configuration test failed.")
                         
-                        # Show configuration details
                         st.warning("**Current Configuration:**")
                         st.write(f"- Email: {st.session_state.email_service.email_username}")
                         st.write(f"- SMTP Server: {st.session_state.email_service.smtp_server}:{st.session_state.email_service.smtp_port}")
@@ -1681,7 +1808,6 @@ def show_settings():
                                "4. Verify SMTP settings in your .env file\n"
                                "5. Check the terminal/console where Streamlit is running for detailed error messages")
                         
-                        # Try to get more details
                         try:
                             import yagmail
                             test_yag = yagmail.SMTP(
@@ -1700,7 +1826,6 @@ def show_settings():
                     with st.expander("Show detailed error traceback"):
                         st.code(traceback.format_exc())
                     
-                    # Try to diagnose the issue
                     st.warning("**Diagnostics:**")
                     try:
                         if st.session_state.email_service:
@@ -1727,7 +1852,6 @@ def show_settings():
         else:
             from utils.slack_notifier import send_slack_alert
             
-            # Mock vulnerability for test
             class MockVuln:
                 product_name = "Test Product"
                 oem_name = "Test OEM"
@@ -1741,13 +1865,11 @@ def show_settings():
             else:
                 st.error("Failed to send test alert.")
 
-    # --- Team Management ---
     user = st.session_state.user
     if user and user.role in ['Owner', 'Team Lead'] and user.organization_id:
         st.divider()
         st.subheader(" Team Management")
         
-        # Invite Member
         with st.expander("Invite New Member"):
             with st.form("invite_form"):
                 invite_email = st.text_input("Email Address")
@@ -1768,7 +1890,6 @@ def show_settings():
                         else:
                             st.error("Failed to create invitation.")
 
-        # List Members
         st.write("Current Team Members")
         team_members = st.session_state.db_ops.get_organization_users(user.organization_id)
         if team_members:
@@ -1780,21 +1901,18 @@ def show_settings():
             } for u in team_members]
             st.dataframe(pd.DataFrame(team_data), use_container_width=True)
     
-    # --- Organization Settings (Owner Only) ---
     if user and user.role in ['Owner'] and user.organization_id:
         st.divider()
         st.subheader(" Organization Settings")
         
-        # OEM Preferences
         st.write("### Managed Data Sources")
         st.info("Select which OEMs are relevant to your organization. Analysts will only see vulnerabilities from selected OEMs.")
         
-        all_oems = get_all_oems() # Returns dict {id: config}
+        all_oems = get_all_oems()
         all_oem_ids = list(all_oems.keys())
         
         org = st.session_state.db_ops.get_organization(user.organization_id)
         
-        # Determine current selection
         current_selection = []
         if org and org.enabled_oems:
             if org.enabled_oems == "ALL":
@@ -1802,7 +1920,7 @@ def show_settings():
             else:
                 current_selection = [x.strip() for x in org.enabled_oems.split(",") if x.strip() in all_oem_ids]
         else:
-             current_selection = all_oem_ids # Default to all
+             current_selection = all_oem_ids
 
         selected_oems = st.multiselect(
             "Active OEM Sources", 
@@ -1812,7 +1930,6 @@ def show_settings():
         )
         
         if st.button("Save Organization Settings"):
-            # If all selected, save as "ALL" for efficiency/future-proofing
             value_to_save = "ALL" if len(selected_oems) == len(all_oem_ids) else selected_oems
             
             if st.session_state.db_ops.update_organization_oems(org.id, value_to_save):

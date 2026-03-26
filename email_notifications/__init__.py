@@ -33,12 +33,10 @@ class EmailNotificationService:
                                vulnerability: Vulnerability) -> bool:
         """Send a vulnerability alert email to a subscriber"""
         try:
-            # Create email content
             subject = f"🚨 {vulnerability.severity_level} Vulnerability Alert: {vulnerability.product_name}"
             html_content = self._create_vulnerability_email_html(vulnerability)
             text_content = self._create_vulnerability_email_text(vulnerability)
             
-            # Send email
             success = self._send_email(
                 to_email=subscription.email,
                 subject=subject,
@@ -46,7 +44,6 @@ class EmailNotificationService:
                 text_content=text_content
             )
             
-            # Log the notification
             self.db_ops.log_notification(
                 subscription_id=subscription.id,
                 vulnerability_id=vulnerability.id,
@@ -62,7 +59,6 @@ class EmailNotificationService:
             
         except Exception as e:
             logger.error(f"Error sending vulnerability alert: {e}")
-            # Log the failed notification
             self.db_ops.log_notification(
                 subscription_id=subscription.id,
                 vulnerability_id=vulnerability.id,
@@ -73,7 +69,6 @@ class EmailNotificationService:
     
     def send_bulk_vulnerability_alerts(self, vulnerability: Vulnerability) -> Dict[str, int]:
         """Send vulnerability alerts to all matching subscribers"""
-        # Get all subscriptions that match this vulnerability
         subscriptions = self.db_ops.get_subscriptions_for_vulnerability(vulnerability)
         
         sent_count = 0
@@ -110,13 +105,13 @@ class EmailNotificationService:
             <meta charset="utf-8">
             <title>Vulnerability Alert</title>
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color:
                 .header {{ background-color: {severity_color}; color: white; padding: 20px; text-align: center; }}
                 .content {{ padding: 20px; }}
-                .vulnerability-info {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; }}
+                .vulnerability-info {{ background-color:
                 .severity-badge {{ background-color: {severity_color}; color: white; padding: 5px 10px; border-radius: 3px; font-weight: bold; }}
-                .footer {{ background-color: #e9ecef; padding: 15px; text-align: center; font-size: 12px; }}
-                .button {{ background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }}
+                .footer {{ background-color:
+                .button {{ background-color:
             </style>
         </head>
         <body>
@@ -213,7 +208,6 @@ class EmailNotificationService:
                 logger.error("Email credentials not configured")
                 return False
             
-            # Try using yagmail first (simpler)
             try:
                 yag = yagmail.SMTP(self.email_username, self.email_password)
                 yag.send(
@@ -226,20 +220,17 @@ class EmailNotificationService:
             except Exception as e:
                 logger.warning(f"yagmail failed, trying SMTP: {e}")
             
-            # Fallback to SMTP
             msg = MIMEMultipart('alternative')
             msg['From'] = self.from_email
             msg['To'] = to_email
             msg['Subject'] = subject
             
-            # Add text and HTML parts
             text_part = MIMEText(text_content, 'plain')
             html_part = MIMEText(html_content, 'html')
             
             msg.attach(text_part)
             msg.attach(html_part)
             
-            # Send email
             server = smtplib.SMTP(self.smtp_server, self.smtp_port)
             if self.use_tls:
                 server.starttls()
@@ -356,7 +347,7 @@ class EmailNotificationService:
             logger.info(f"SMTP Server: {self.smtp_server}:{self.smtp_port}")
             
             success = self._send_email(
-                to_email=self.email_username,  # Send to self for testing
+                to_email=self.email_username,
                 subject=test_subject,
                 html_content=test_content,
                 text_content=test_content

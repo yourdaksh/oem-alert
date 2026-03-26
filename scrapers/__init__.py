@@ -32,7 +32,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Registry of available scrapers (active only)
 SCRAPER_REGISTRY: Dict[str, Type[BaseScraper]] = {
     'intel': IntelScraper,
     'oracle': OracleScraper,
@@ -144,12 +143,10 @@ def create_scraper_manager() -> ScraperManager:
     """Create and return a new ScraperManager instance"""
     return ScraperManager()
 
-# Convenience function for getting all available OEMs
 def get_available_oems() -> List[str]:
     """Get list of all available OEMs (enabled and disabled)"""
     return list(get_all_oems().keys())
 
-# Convenience function for getting enabled OEMs
 def get_enabled_oem_list() -> List[str]:
     """Get list of enabled OEMs"""
     return get_enabled_oems()

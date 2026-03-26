@@ -29,10 +29,8 @@ class JuniperScraper(RSSScraper):
         vulnerabilities = []
         
         try:
-            # Look for CVE references in the page
             cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
             
-            # Find all text containing CVE IDs
             cve_texts = soup.find_all(string=cve_pattern)
             
             for cve_text in cve_texts:
@@ -43,7 +41,6 @@ class JuniperScraper(RSSScraper):
                     
                     cve_id = cve_match.group(0)
                     
-                    # Get parent element for context
                     parent = cve_text.parent
                     while parent and parent.name not in ['div', 'article', 'section', 'tr', 'td', 'li']:
                         parent = parent.parent
@@ -51,21 +48,16 @@ class JuniperScraper(RSSScraper):
                     if not parent:
                         continue
                     
-                    # Extract title
                     title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'a'])
                     title = title_elem.get_text().strip() if title_elem else cve_id
                     
-                    # Extract description
                     desc_elem = parent.find(['p', 'div'], class_=re.compile(r'description|summary|content', re.I))
                     description = desc_elem.get_text().strip() if desc_elem else parent.get_text()[:500]
                     
-                    # Extract severity
                     severity = self.extract_severity_from_text(title + " " + description)
                     
-                    # Extract product
                     product_name = self.extract_product_name(title, description)
                     
-                    # Extract date
                     date_elem = parent.find(['time', 'span'], class_=re.compile(r'date', re.I))
                     published_date = datetime.now()
                     if date_elem:
@@ -74,7 +66,6 @@ class JuniperScraper(RSSScraper):
                         if parsed_date:
                             published_date = parsed_date
                     
-                    # Extract CVSS
                     cvss_score = self.extract_cvss_score(parent.get_text())
                     
                     vuln_record = self.create_vulnerability_record(

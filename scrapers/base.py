@@ -19,7 +19,6 @@ except ImportError:
     EC = None
     HAS_SELENIUM = False
 except Exception as e:
-    # Catch other initialization errors
     logging.warning(f"Selenium import failed: {e}")
     HAS_SELENIUM = False
 from datetime import datetime, timedelta
@@ -30,7 +29,6 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import json
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -89,7 +87,6 @@ class BaseScraper(ABC):
                         EC.presence_of_element_located((By.CSS_SELECTOR, wait_for_element))
                     )
                 
-                # Wait a bit for dynamic content to load
                 time.sleep(2)
                 
                 html = self.driver.page_source
@@ -100,7 +97,6 @@ class BaseScraper(ABC):
                     response.raise_for_status()
                 except requests.HTTPError as http_err:
                     status = getattr(response, 'status_code', None)
-                    # Fallback to Selenium for common block statuses
                     if status in (403, 429) and HAS_SELENIUM:
                         logger.warning(f"HTTP {status} for {url}; retrying with Selenium headless")
                         return self.get_page(url, use_selenium=True, wait_for_element=wait_for_element)
@@ -166,7 +162,6 @@ class BaseScraper(ABC):
             except ValueError:
                 continue
         
-        # Try to extract date from text
         date_match = re.search(r'\d{4}-\d{2}-\d{2}', date_str)
         if date_match:
             try:
@@ -185,10 +180,8 @@ class BaseScraper(ABC):
         if not text:
             return ""
         
-        # Remove extra whitespace and newlines
         text = re.sub(r'\s+', ' ', text.strip())
         
-        # Remove HTML entities
         text = text.replace('&nbsp;', ' ')
         text = text.replace('&amp;', '&')
         text = text.replace('&lt;', '<')
@@ -263,20 +256,16 @@ class RSSScraper(BaseScraper):
                     link = item.find('link').text if item.find('link') else ""
                     pub_date = item.find('pubDate').text if item.find('pubDate') else ""
                     
-                    # Extract CVE ID
                     cve_id = self.extract_cve_id(title + " " + description)
                     if not cve_id:
                         cve_id = f"{self.oem_name.lower()}-{hash(title)}"
                     
-                    # Parse published date
                     published_date = self.parse_date(pub_date)
                     if not published_date:
                         published_date = datetime.now()
                     
-                    # Extract severity from title/description
                     severity = self.extract_severity_from_text(title + " " + description)
                     
-                    # Extract product name
                     product_name = self.extract_product_name(title, description)
                     
                     vuln_record = self.create_vulnerability_record(
@@ -307,10 +296,9 @@ class RSSScraper(BaseScraper):
     
     def extract_product_name(self, title: str, description: str) -> str:
         """Extract product name from title/description - override in subclasses"""
-        # Default implementation - try to extract from title
         words = title.split()
         if len(words) > 1:
-            return " ".join(words[:2])  # Take first two words as product name
+            return " ".join(words[:2])
         return title
 
 class WebScraper(BaseScraper):
@@ -318,17 +306,14 @@ class WebScraper(BaseScraper):
     
     def find_vulnerability_elements(self, soup: BeautifulSoup) -> List[BeautifulSoup]:
         """Find vulnerability elements on the page - override in subclasses"""
-        # Default implementation - look for common patterns
         elements = []
         
-        # Look for tables with vulnerability data
         tables = soup.find_all('table')
         for table in tables:
             rows = table.find_all('tr')
-            if len(rows) > 1:  # Has header and data rows
-                elements.extend(rows[1:])  # Skip header row
+            if len(rows) > 1:
+                elements.extend(rows[1:])
         
-        # Look for divs with vulnerability information
         vuln_divs = soup.find_all('div', class_=re.compile(r'vuln|security|advisory', re.I))
         elements.extend(vuln_divs)
         
@@ -336,19 +321,15 @@ class WebScraper(BaseScraper):
     
     def parse_vulnerability_element(self, element: BeautifulSoup) -> Optional[Dict[str, Any]]:
         """Parse a vulnerability element - override in subclasses"""
-        # Default implementation - extract basic information
         text = element.get_text()
         
-        # Extract CVE ID
         cve_id = self.extract_cve_id(text)
         if not cve_id:
             return None
         
-        # Extract other information
         severity = self.extract_severity_from_text(text)
         cvss_score = self.extract_cvss_score(text)
         
-        # Try to find links
         links = element.find_all('a')
         source_url = links[0]['href'] if links else None
         
@@ -357,7 +338,7 @@ class WebScraper(BaseScraper):
             product_name="Unknown Product",
             product_version=None,
             severity_level=severity,
-            vulnerability_description=text[:500],  # Truncate long descriptions
+            vulnerability_description=text[:500],
             mitigation_strategy=None,
             published_date=datetime.now(),
             source_url=source_url,

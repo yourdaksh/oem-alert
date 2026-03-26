@@ -6,8 +6,6 @@ class CitrixScraper(RSSScraper):
     
     def extract_product_name(self, title: str, description: str) -> str:
         """Extract product from Citrix bulletin"""
-        # Titles: "Citrix ADC and Citrix Gateway Security Bulletin..."
-        
         if "Citrix ADC" in title:
             return "Citrix ADC"
         if "Citrix Gateway" in title:

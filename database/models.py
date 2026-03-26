@@ -15,8 +15,8 @@ class Organization(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, nullable=False)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Can be null initially
-    enabled_oems = Column(String(500), default="ALL", nullable=True) # Comma-separated list of OEM IDs or "ALL"
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    enabled_oems = Column(String(500), default="ALL", nullable=True)
     created_at = Column(DateTime, default=func.now())
     
     users = relationship("User", back_populates="organization", foreign_keys="User.organization_id")
@@ -28,8 +28,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=False)
-    password_hash = Column(String(128), nullable=False) # Store hashed passwords
-    role = Column(String(20), default="Analyst", nullable=False) # Owner, Team Lead, Analyst
+    password_hash = Column(String(128), nullable=False)
+    role = Column(String(20), default="Analyst", nullable=False)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime, default=func.now())
     
@@ -44,7 +44,7 @@ class Invitation(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     role = Column(String(20), default="Analyst", nullable=False)
     token = Column(String(100), unique=True, nullable=False)
-    status = Column(String(20), default="Pending") # Pending, Accepted, Expired
+    status = Column(String(20), default="Pending")
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=func.now())
 
@@ -53,13 +53,13 @@ class Vulnerability(Base):
     __tablename__ = "vulnerabilities"
     
     id = Column(Integer, primary_key=True, index=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True) # Multi-tenancy support
-    unique_id = Column(String(50), nullable=False, index=True)  # CVE ID or vendor ID
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    unique_id = Column(String(50), nullable=False, index=True)
     product_name = Column(String(200), nullable=False, index=True)
     product_version = Column(String(100), nullable=True)
     oem_name = Column(String(100), nullable=False, index=True)
-    severity_level = Column(String(20), nullable=False, index=True)  # Critical, High, Medium, Low
-    status = Column(String(20), default="Open", nullable=False, index=True) # Open, Investigating, Mitigated, False Positive, Assigned, Resolved, Closed
+    severity_level = Column(String(20), nullable=False, index=True)
+    status = Column(String(20), default="Open", nullable=False, index=True)
     vulnerability_description = Column(Text, nullable=False)
     mitigation_strategy = Column(Text, nullable=True)
     published_date = Column(DateTime, nullable=False, index=True)
@@ -67,21 +67,18 @@ class Vulnerability(Base):
     cvss_score = Column(String(10), nullable=True)
     affected_versions = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now())
-    discovered_date = Column(DateTime, default=func.now()) # Required by legacy schema
+    discovered_date = Column(DateTime, default=func.now())
 
     
-    # CRM Fields
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     assigned_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     assigned_at = Column(DateTime, nullable=True)
     resolution_notes = Column(Text, nullable=True)
     
-    # Relationships
     subscriptions = relationship("Subscription", back_populates="vulnerability")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     assigned_by = relationship("User", foreign_keys=[assigned_by_id])
     
-    # Indexes for better query performance
     __table_args__ = (
         UniqueConstraint('unique_id', 'oem_name', name='uix_vuln_id_oem'),
         Index('idx_oem_severity', 'oem_name', 'severity_level'),
@@ -94,20 +91,18 @@ class Subscription(Base):
     __tablename__ = "subscriptions"
     
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), nullable=True, index=True)  # Optional for Slack-only subscriptions
-    slack_webhook_url = Column(String(500), nullable=True, index=True)  # Slack webhook URL
-    oem_name = Column(String(100), nullable=True, index=True)  # None means all OEMs
-    product_name = Column(String(200), nullable=True, index=True)  # None means all products
-    severity_filter = Column(String(20), nullable=False, default="Critical,High")  # Comma-separated
+    email = Column(String(255), nullable=True, index=True)
+    slack_webhook_url = Column(String(500), nullable=True, index=True)
+    oem_name = Column(String(100), nullable=True, index=True)
+    product_name = Column(String(200), nullable=True, index=True)
+    severity_filter = Column(String(20), nullable=False, default="Critical,High")
     is_active = Column(Boolean, default=True, nullable=False)
     created_date = Column(DateTime, default=func.now(), nullable=False)
     last_notified = Column(DateTime, nullable=True)
     
-    # Foreign key to vulnerability (for tracking which vulnerabilities triggered notifications)
     vulnerability_id = Column(Integer, ForeignKey("vulnerabilities.id"), nullable=True)
     vulnerability = relationship("Vulnerability", back_populates="subscriptions")
     
-    # Indexes
     __table_args__ = (
         Index('idx_email_active', 'email', 'is_active'),
         Index('idx_slack_webhook', 'slack_webhook_url', 'is_active'),
@@ -120,15 +115,14 @@ class ScanLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     oem_name = Column(String(100), nullable=False, index=True)
-    scan_type = Column(String(20), nullable=False)  # 'scheduled', 'manual', 'error'
-    status = Column(String(20), nullable=False)  # 'success', 'error', 'partial'
+    scan_type = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False)
     vulnerabilities_found = Column(Integer, default=0, nullable=False)
     new_vulnerabilities = Column(Integer, default=0, nullable=False)
     error_message = Column(Text, nullable=True)
-    scan_duration = Column(Integer, nullable=True)  # Duration in seconds
+    scan_duration = Column(Integer, nullable=True)
     scan_date = Column(DateTime, default=func.now(), nullable=False, index=True)
     
-    # Indexes
     __table_args__ = (
         Index('idx_oem_scan_date', 'oem_name', 'scan_date'),
         Index('idx_scan_status', 'status', 'scan_date'),
@@ -146,18 +140,13 @@ class NotificationLog(Base):
     sent_date = Column(DateTime, default=func.now(), nullable=False, index=True)
     error_message = Column(Text, nullable=True)
     
-    # Relationships
     subscription = relationship("Subscription")
     vulnerability = relationship("Vulnerability")
     
-    # Indexes
     __table_args__ = (
         Index('idx_sent_date', 'sent_date'),
         Index('idx_subscription_vuln', 'subscription_id', 'vulnerability_id'),
     )
-
-    # Add status column to Vulnerability (handled in migration if table exists)
-    # Note: We are adding this to the model definition now.
 
 class AuditLog(Base):
     """Model for tracking audit trails"""
@@ -165,14 +154,13 @@ class AuditLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     vulnerability_id = Column(Integer, ForeignKey("vulnerabilities.id"), nullable=False)
-    action = Column(String(50), nullable=False)  # e.g., 'status_change', 'manual_update'
+    action = Column(String(50), nullable=False)
     old_value = Column(String(255), nullable=True)
     new_value = Column(String(255), nullable=True)
     user = Column(String(100), default="Admin", nullable=False)
     timestamp = Column(DateTime, default=func.now(), nullable=False)
     details = Column(Text, nullable=True)
     
-    # Relationships
     vulnerability = relationship("Vulnerability")
 
 class SystemSettings(Base):

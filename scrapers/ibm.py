@@ -16,12 +16,10 @@ class IBMScraper(RSSScraper):
         """Scrape IBM vulnerabilities"""
         vulnerabilities = []
         
-        # Try RSS feed first
         rss_url = self.oem_config.get('rss_url')
         if rss_url:
             vulnerabilities.extend(self.parse_rss_feed(rss_url))
         
-        # Also scrape the main page
         vuln_url = self.oem_config.get('vulnerability_url')
         if vuln_url:
             soup = self.get_page(vuln_url)

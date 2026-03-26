@@ -6,7 +6,6 @@ import os
 from typing import Dict, Any, List
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
 def load_oems_config() -> Dict[str, Any]:
@@ -16,10 +15,8 @@ def load_oems_config() -> Dict[str, Any]:
     try:
         with open(config_path, 'r') as file:
             config = yaml.safe_load(file)
-        # Extract the oems_config from the YAML structure
         return config.get('oems_config', {})
     except FileNotFoundError:
-        # Fallback to hardcoded config if YAML file doesn't exist
         try:
             from config.oems import oems_config
             return oems_config
@@ -44,7 +41,6 @@ def get_all_oems() -> Dict[str, Any]:
     """Get all OEM configurations"""
     return load_oems_config()
 
-# Email configuration
 EMAIL_CONFIG = {
     "smtp_server": os.getenv("SMTP_SERVER", "smtp.gmail.com"),
     "smtp_port": int(os.getenv("SMTP_PORT", "587")),
@@ -54,14 +50,12 @@ EMAIL_CONFIG = {
     "use_tls": True
 }
 
-# Slack configuration
 SLACK_CONFIG = {
     "enabled": os.getenv("SLACK_ENABLED", "false").lower() == "true",
     "webhook_url": os.getenv("SLACK_WEBHOOK_URL", ""),
     "default_channel": os.getenv("SLACK_DEFAULT_CHANNEL", "#vulnerability-alerts")
 }
 
-# Application configuration
 APP_CONFIG = {
     "database_url": "sqlite:///./vulnerability_alerts.db",
     "scan_interval_minutes": 60,  # Default scan interval
@@ -71,7 +65,6 @@ APP_CONFIG = {
     "debug_mode": False
 }
 
-# Streamlit configuration
 STREAMLIT_CONFIG = {
     "page_title": "Vulnerability Scper Platform",
 

@@ -19,7 +19,6 @@ class DatabaseOperations:
     def __init__(self, db: Session):
         self.db = db
     
-    # Vulnerability operations
     def set_resolution_notes(self, vuln_id: int, notes: str) -> bool:
         """Update resolution notes for a vulnerability"""
         try:
@@ -46,7 +45,6 @@ class DatabaseOperations:
             if old_status != new_status:
                 vulnerability.status = new_status
                 
-                # Create audit log
                 audit_log = AuditLog(
                     vulnerability_id=vulnerability.id,
                     action="status_change",
@@ -70,7 +68,6 @@ class DatabaseOperations:
 
     def add_vulnerability(self, vuln_data: Dict[str, Any]) -> Vulnerability:
         """Add a new vulnerability to the database"""
-        # Check if vulnerability already exists
         existing = self.db.query(Vulnerability).filter(
             Vulnerability.unique_id == vuln_data['unique_id']
         ).first()
@@ -131,7 +128,6 @@ class DatabaseOperations:
             
         total_vulns = vuln_query.count()
         
-        # By severity
         severity_query = self.db.query(
             Vulnerability.severity_level,
             func.count(Vulnerability.id)
@@ -141,7 +137,6 @@ class DatabaseOperations:
         
         severity_counts = severity_query.group_by(Vulnerability.severity_level).all()
         
-        # By OEM
         oem_query = self.db.query(
             Vulnerability.oem_name,
             func.count(Vulnerability.id)
@@ -151,7 +146,6 @@ class DatabaseOperations:
             
         oem_counts = oem_query.group_by(Vulnerability.oem_name).order_by(desc(func.count(Vulnerability.id))).all()
         
-        # Recent vulnerabilities (last 30 days)
         recent_cutoff = datetime.now() - timedelta(days=30)
         recent_query = self.db.query(Vulnerability).filter(
             Vulnerability.published_date >= recent_cutoff
@@ -168,7 +162,6 @@ class DatabaseOperations:
             'oem_distribution': dict(oem_counts)
         }
     
-    # Subscription operations
     def add_subscription(self, email: Optional[str] = None, 
                         slack_webhook_url: Optional[str] = None,
                         oem_name: Optional[str] = None,
@@ -230,11 +223,9 @@ class DatabaseOperations:
         """Get all subscriptions that should be notified about a vulnerability"""
         subscriptions = []
         
-        # Get all active subscriptions
         all_subs = self.db.query(Subscription).filter(Subscription.is_active == True).all()
         
         for sub in all_subs:
-            # Check if subscription matches this vulnerability
             if self._subscription_matches_vulnerability(sub, vulnerability):
                 subscriptions.append(sub)
         
@@ -243,22 +234,18 @@ class DatabaseOperations:
     def _subscription_matches_vulnerability(self, subscription: Subscription, 
                                           vulnerability: Vulnerability) -> bool:
         """Check if a subscription should be notified about a vulnerability"""
-        # Check OEM match
         if subscription.oem_name and subscription.oem_name != vulnerability.oem_name:
             return False
         
-        # Check product match
         if subscription.product_name and subscription.product_name.lower() not in vulnerability.product_name.lower():
             return False
         
-        # Check severity match
         allowed_severities = [s.strip() for s in subscription.severity_filter.split(',')]
         if vulnerability.severity_level not in allowed_severities:
             return False
         
         return True
     
-    # Scan log operations
     def log_scan(self, oem_name: str, scan_type: str, status: str,
                 vulnerabilities_found: int = 0, new_vulnerabilities: int = 0,
                 error_message: Optional[str] = None, scan_duration: Optional[int] = None):
@@ -285,7 +272,6 @@ class DatabaseOperations:
         successful_scans = self.db.query(ScanLog).filter(ScanLog.status == 'success').count()
         error_scans = self.db.query(ScanLog).filter(ScanLog.status == 'error').count()
         
-        # Last scan times by OEM
         last_scans = self.db.query(
             ScanLog.oem_name,
             func.max(ScanLog.scan_date)
@@ -299,7 +285,6 @@ class DatabaseOperations:
             'last_scans_by_oem': dict(last_scans)
         }
     
-    # Notification log operations
     def log_notification(self, subscription_id: int, vulnerability_id: int,
                         email_sent: bool = False, slack_sent: bool = False, 
                         error_message: Optional[str] = None):
@@ -325,7 +310,6 @@ class DatabaseOperations:
         ).count()
         total_successful = successful_email + successful_slack
         
-        # Notifications by day (last 30 days)
         recent_cutoff = datetime.now() - timedelta(days=30)
         recent_notifications = self.db.query(NotificationLog).filter(
             NotificationLog.sent_date >= recent_cutoff
@@ -342,7 +326,6 @@ class DatabaseOperations:
             'success_rate': (total_successful / total_notifications * 100) if total_notifications > 0 else 0
         }
 
-    # System Settings operations
     def get_setting(self, key: str, default: Any = None) -> Any:
         """Get a system setting value"""
         from database.models import SystemSettings
@@ -367,8 +350,6 @@ class DatabaseOperations:
             self.db.add(setting)
         self.db.commit()
         return True
-
-    # --- CRM / User Management ---
 
     def _hash_password(self, password: str) -> str:
         """Hash a password using PBKDF2"""
@@ -416,7 +397,6 @@ class DatabaseOperations:
         try:
             org = self.get_organization(org_id)
             if org:
-                # Convert list to comma-separated string
                 org.enabled_oems = ",".join(enabled_oems)
                 self.db.commit()
                 return True
@@ -493,7 +473,6 @@ class DatabaseOperations:
         if not invite:
             return None
         
-        # Create user
         user = self.create_user(
             username=username,
             email=invite.email,
@@ -503,7 +482,6 @@ class DatabaseOperations:
         )
         
         if user:
-            # Mark invite as accepted
             invite.status = 'Accepted'
             self.db.commit()
             return user
@@ -530,13 +508,12 @@ class DatabaseOperations:
             vuln.assigned_at = datetime.utcnow()
             vuln.status = "Assigned"
             
-            # Log this action
             audit_log = AuditLog(
                 vulnerability_id=vuln.id,
                 action="assignment",
                 old_value=old_status,
                 new_value="Assigned",
-                user=f"User ID {assigned_by_id}", # Ideally we fetch username
+                user=f"User ID {assigned_by_id}",
                 details=f"Assigned to User ID {assigned_to_id}"
             )
             self.db.add(audit_log)
@@ -553,3 +530,59 @@ class DatabaseOperations:
     def get_user_assigned_vulnerabilities(self, user_id: int) -> List[Vulnerability]:
         """Get vulnerabilities assigned to a user"""
         return self.db.query(Vulnerability).filter(Vulnerability.assigned_to_id == user_id).all()
+
+    def update_user_role(self, user_id: int, new_role: str) -> bool:
+        """Update a user's role"""
+        try:
+            user = self.db.query(User).filter(User.id == user_id).first()
+            if user:
+                user.role = new_role
+                self.db.commit()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error updating user role: {e}")
+            self.db.rollback()
+            return False
+
+    def remove_user(self, user_id: int) -> bool:
+        """Remove a user from the system"""
+        try:
+            user = self.db.query(User).filter(User.id == user_id).first()
+            if user:
+                self.db.query(Vulnerability).filter(Vulnerability.assigned_to_id == user_id).update(
+                    {Vulnerability.assigned_to_id: None, Vulnerability.status: "Open"}
+                )
+                self.db.delete(user)
+                self.db.commit()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error removing user: {e}")
+            self.db.rollback()
+            return False
+
+    def get_user_activity_stats(self, user_id: int) -> Dict[str, Any]:
+        """Get activity statistics for a user"""
+        total_assigned = self.db.query(Vulnerability).filter(Vulnerability.assigned_to_id == user_id).count()
+        resolved = self.db.query(Vulnerability).filter(
+            Vulnerability.assigned_to_id == user_id,
+            Vulnerability.status.in_(["Resolved", "Closed", "Mitigated"])
+        ).count()
+        in_progress = self.db.query(Vulnerability).filter(
+            Vulnerability.assigned_to_id == user_id,
+            Vulnerability.status.in_(["Assigned", "In Progress", "Investigating"])
+        ).count()
+        return {
+            "total_assigned": total_assigned,
+            "resolved": resolved,
+            "in_progress": in_progress,
+            "open": total_assigned - resolved - in_progress
+        }
+
+    def get_vulnerabilities_by_status(self, status: str, allowed_oems: Optional[List[str]] = None) -> List[Vulnerability]:
+        """Get vulnerabilities filtered by status"""
+        query = self.db.query(Vulnerability).filter(Vulnerability.status == status)
+        if allowed_oems:
+            query = query.filter(Vulnerability.oem_name.in_(allowed_oems))
+        return query.order_by(desc(Vulnerability.published_date)).all()

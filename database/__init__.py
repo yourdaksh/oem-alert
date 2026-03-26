@@ -9,7 +9,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool, NullPool
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -23,14 +22,12 @@ def get_database_url():
     db_type = get_database_type()
     
     if db_type == 'supabase':
-        # Supabase PostgreSQL connection
         supabase_db_url = os.getenv('SUPABASE_DB_URL')
         if not supabase_db_url:
             raise ValueError("SUPABASE_DB_URL environment variable is required when DATABASE_TYPE=supabase")
         logger.info("Using Supabase PostgreSQL database")
         return supabase_db_url
     else:
-        # Default to SQLite
         sqlite_url = os.getenv('SQLITE_DATABASE_URL', 'sqlite:///vulnerability_alerts.db')
         logger.info(f"Using SQLite database: {sqlite_url}")
         return sqlite_url
@@ -41,18 +38,16 @@ def create_engine_instance():
     db_type = get_database_type()
     
     if db_type == 'supabase':
-        # PostgreSQL engine for Supabase
         engine = create_engine(
             database_url,
             echo=False,
-            poolclass=NullPool,  # Supabase handles connection pooling
-            pool_pre_ping=True,  # Verify connections before using
+            poolclass=NullPool,
+            pool_pre_ping=True,
             connect_args={
                 "sslmode": "require"  # Supabase requires SSL
             }
         )
     else:
-        # SQLite engine
         engine = create_engine(
             database_url,
             echo=False,
@@ -62,10 +57,8 @@ def create_engine_instance():
     
     return engine
 
-# Create engine
 engine = create_engine_instance()
 
-# Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
@@ -82,7 +75,6 @@ def init_database():
         from .models import Base
         db_type = get_database_type()
         
-        # Create all tables
         Base.metadata.create_all(bind=engine)
         logger.info("Database initialized successfully!")
         logger.info(f"Database type: {db_type}")
@@ -96,10 +88,8 @@ def test_connection():
     try:
         with engine.connect() as connection:
             if get_database_type() == 'supabase':
-                # PostgreSQL syntax
                 result = connection.execute(text("SELECT 1"))
             else:
-                # SQLite syntax
                 result = connection.execute(text("SELECT 1"))
             logger.info("Database connection test successful")
             return True

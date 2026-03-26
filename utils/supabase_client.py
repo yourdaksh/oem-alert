@@ -7,12 +7,10 @@ from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Global Supabase client instance
 _supabase_client: Optional[Client] = None
 
 def get_supabase_client() -> Optional[Client]:
@@ -87,13 +85,11 @@ def sign_up_user(email: str, password: str, metadata: Optional[Dict[str, Any]] =
         if metadata:
             sign_up_data["data"] = metadata
         
-        # Set redirect URL for email confirmation (if email verification is enabled)
         if redirect_to:
             sign_up_data["options"] = {
                 "email_redirect_to": redirect_to
             }
         else:
-            # Default to Streamlit app URL
             sign_up_data["options"] = {
                 "email_redirect_to": "http://localhost:8501"
             }

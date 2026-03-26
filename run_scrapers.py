@@ -3,21 +3,22 @@ Main scraper runner script for automated vulnerability scanning
 """
 import sys
 import os
+import sys
+import os
 import logging
 from datetime import datetime
 from typing import Dict, List, Any
+from dotenv import load_dotenv
 
-# Add the project root to Python path
+load_dotenv()
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from database import init_database, get_db
-from database.operations import DatabaseOperations
+from database.supabase_operations import SupabaseOperations
 from database.models import Vulnerability, ScanLog
 from scrapers import create_scraper_manager
-from email_notifications import create_email_service
 from config import get_enabled_oems
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -30,30 +31,21 @@ logger = logging.getLogger(__name__)
 
 def run_scrapers():
     """Run all enabled scrapers and process results"""
-    logger.info("Starting vulnerability scraping process")
+    logger.info("Starting vulnerability scraping process to Supabase")
     
     try:
-        # Initialize database
-        init_database()
-        db = next(get_db())
-        db_ops = DatabaseOperations(db)
+        db_ops = SupabaseOperations()
         
-        # Initialize services
         scraper_manager = create_scraper_manager()
-        email_service = create_email_service(db_ops)
-        
-        # Get enabled OEMs
         enabled_oems = get_enabled_oems()
         logger.info(f"Enabled OEMs: {enabled_oems}")
         
-        # Run scrapers
         results = scraper_manager.run_all_scrapers()
         
         total_vulnerabilities = 0
         total_new_vulnerabilities = 0
         total_notifications_sent = 0
         
-        # Process results
         for oem_id, vulnerabilities in results.items():
             logger.info(f"Processing {len(vulnerabilities)} vulnerabilities for {oem_id}")
             
@@ -62,26 +54,19 @@ def run_scrapers():
             
             for vuln_data in vulnerabilities:
                 try:
-                    # Add vulnerability to database
                     vulnerability = db_ops.add_vulnerability(vuln_data)
                     total_vulnerabilities += 1
                     
-                    # Check if this is a new vulnerability (discovered today)
                     if vulnerability.discovered_date.date() == datetime.now().date():
                         new_vulns_count += 1
                         total_new_vulnerabilities += 1
                         
-                        # Send email notifications
-                        notification_results = email_service.send_bulk_vulnerability_alerts(vulnerability)
-                        total_notifications_sent += notification_results['sent']
-                        
-                        logger.info(f"New vulnerability {vulnerability.unique_id} - sent {notification_results['sent']} notifications")
+                        logger.info(f"New vulnerability {vulnerability.unique_id} - Cloud notifications will handle this.")
                 
                 except Exception as e:
                     error_count += 1
                     logger.error(f"Error processing vulnerability {vuln_data.get('unique_id', 'unknown')}: {e}")
             
-            # Log scan results
             db_ops.log_scan(
                 oem_name=oem_id,
                 scan_type='scheduled',
@@ -91,7 +76,6 @@ def run_scrapers():
                 error_message=f"{error_count} errors" if error_count > 0 else None
             )
         
-        # Summary
         logger.info(f"Scraping completed:")
         logger.info(f"  - Total vulnerabilities processed: {total_vulnerabilities}")
         logger.info(f"  - New vulnerabilities: {total_new_vulnerabilities}")
@@ -107,7 +91,6 @@ def run_scrapers():
     except Exception as e:
         logger.error(f"Fatal error in scraping process: {e}")
         
-        # Log error scan
         try:
             db_ops.log_scan(
                 oem_name='system',
@@ -127,16 +110,9 @@ def run_single_oem_scraper(oem_id: str):
     logger.info(f"Running scraper for {oem_id}")
     
     try:
-        # Initialize database
-        init_database()
-        db = next(get_db())
-        db_ops = DatabaseOperations(db)
+        db_ops = SupabaseOperations()
         
-        # Initialize services
         scraper_manager = create_scraper_manager()
-        email_service = create_email_service(db_ops)
-        
-        # Run specific scraper
         vulnerabilities = scraper_manager.run_scraper(oem_id)
         
         new_vulns_count = 0
@@ -146,18 +122,12 @@ def run_single_oem_scraper(oem_id: str):
             try:
                 vulnerability = db_ops.add_vulnerability(vuln_data)
                 
-                # Check if new vulnerability
                 if vulnerability.discovered_date.date() == datetime.now().date():
                     new_vulns_count += 1
                     
-                    # Send notifications
-                    notification_results = email_service.send_bulk_vulnerability_alerts(vulnerability)
-                    notifications_sent += notification_results['sent']
-            
             except Exception as e:
                 logger.error(f"Error processing vulnerability: {e}")
         
-        # Log scan results
         db_ops.log_scan(
             oem_name=oem_id,
             scan_type='manual',
@@ -178,7 +148,6 @@ def run_single_oem_scraper(oem_id: str):
     except Exception as e:
         logger.error(f"Error running single OEM scraper for {oem_id}: {e}")
         
-        # Log error scan
         try:
             db_ops.log_scan(
                 oem_name=oem_id,
@@ -196,7 +165,6 @@ def run_single_oem_scraper(oem_id: str):
 def main():
     """Main entry point"""
     if len(sys.argv) > 1:
-        # Run specific OEM scraper
         oem_id = sys.argv[1]
         try:
             result = run_single_oem_scraper(oem_id)
@@ -205,7 +173,6 @@ def main():
             print(f"Error: {e}")
             sys.exit(1)
     else:
-        # Run all scrapers
         try:
             result = run_scrapers()
             print(f"Scan completed: {result}")
