@@ -6,7 +6,7 @@ from backend.dependencies import get_supabase
 logger = logging.getLogger(__name__)
 
 class SupabaseOperations:
-    """Class for handling database operations with Supabase instead of SQLite"""
+    """Class for handling database operations using Supabase PostgreSQL"""
     
     def __init__(self):
         self.supabase = get_supabase()

@@ -57,7 +57,7 @@ SLACK_CONFIG = {
 }
 
 APP_CONFIG = {
-    "database_url": "sqlite:///./vulnerability_alerts.db",
+    "database_url": os.getenv("SUPABASE_DB_URL"),
     "scan_interval_minutes": 60,  # Default scan interval
     "max_vulnerabilities_per_scan": 1000,
     "email_batch_size": 50,

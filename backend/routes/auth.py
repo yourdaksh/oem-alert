@@ -21,7 +21,7 @@ class SetupAccountRequest(BaseModel):
 async def setup_account(data: SetupAccountRequest, 
                         supabase: Client = Depends(get_supabase),
                         db: Session = Depends(get_db)):
-    """Bridge endpoint to create user in both Supabase and Local SQLite after Stripe payment"""
+    """Bridge endpoint to create user in both Supabase Auth and Supabase PostgreSQL after Stripe payment"""
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase client not configured")
         

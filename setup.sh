@@ -87,7 +87,7 @@ fi
 
 # Database setup complete
 echo ""
-echo "🗄️  SQLite database will be created automatically on first run"
+echo "🗄️  Supabase PostgreSQL database must be configured in .env before running"
 
 echo ""
 echo "🎉 Setup completed successfully!"

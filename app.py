@@ -1969,7 +1969,7 @@ def show_settings():
     st.subheader("System Information")
     
     st.write(f"**Application Version:** 1.0.0")
-    st.write(f"**Database:** SQLite")
+    st.write(f"**Database:** Supabase")
     st.write(f"**Last Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 if __name__ == "__main__":
