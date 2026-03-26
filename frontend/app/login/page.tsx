@@ -31,7 +31,7 @@ function LoginContent() {
     
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/setup-account`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://oem-alert-api.onrender.com'}/auth/setup-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -56,7 +56,7 @@ function LoginContent() {
     e.preventDefault();
     // TODO: Call Supabase Auth login or backend endpoint
     // Redirect to Streamlit dashboard on success
-    window.location.href = 'http://localhost:8501';
+    window.location.href = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://oem-alert-dashboard.onrender.com';
   };
 
   const inputStyle = {

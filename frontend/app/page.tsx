@@ -12,15 +12,15 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh' }}>
       {/* ─── NAV ─── */}
-      <nav className="glass" style={{ padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 100, borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <ShieldAlert style={{ color: 'var(--primary)' }} size={28} />
-          <span style={{ fontSize: '1.3rem', fontWeight: 700, letterSpacing: '-1px', fontFamily: 'var(--font-display)' }}>OEM Alert</span>
+      <nav className="glass" style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', position: 'sticky', top: 0, zIndex: 100, borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <ShieldAlert style={{ color: 'var(--primary)' }} size={24} />
+          <span style={{ fontSize: '1.2rem', fontWeight: 700, letterSpacing: '-0.5px', fontFamily: 'var(--font-display)' }}>Vulnerability scanner</span>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <Link href="#pricing" style={{ color: 'var(--text-secondary)', textDecoration: 'none', padding: '0.5rem 1rem', fontSize: '0.95rem', fontWeight: 500 }}>Pricing</Link>
-          <Link href="/login" className="btn btn-secondary" style={{ padding: '0.6rem 1.25rem' }}>Sign In</Link>
-          <Link href="/onboarding" className="btn btn-primary" style={{ padding: '0.6rem 1.25rem' }}>Get Started</Link>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Link href="#pricing" style={{ color: 'var(--text-secondary)', textDecoration: 'none', padding: '0.5rem', fontSize: '0.9rem', fontWeight: 500 }}>Pricing</Link>
+          <Link href="/login" className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}>Sign In</Link>
+          <Link href="/onboarding" className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}>Get Started</Link>
         </div>
       </nav>
 
@@ -37,11 +37,11 @@ export default function Home() {
           <p className="animate-fade-in-up delay-2" style={{ fontSize: '1.15rem', color: 'var(--text-secondary)', marginBottom: '3rem', lineHeight: 1.7, maxWidth: '700px', margin: '0 auto 3rem auto' }}>
             The NVD is often weeks behind. Our automated scraping engine monitors <strong style={{ color: '#fff' }}>24+ OEMs</strong> to deliver critical zero-day alerts the second they are published.
           </p>
-          <div className="animate-fade-in-up delay-3" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link href="/onboarding" className="btn btn-primary" style={{ padding: '1.1rem 2.5rem', fontSize: '1.1rem' }}>
-              Start 14-Day Free Trial <ArrowRight size={20} />
+          <div className="animate-fade-in-up delay-3" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', padding: '0 1rem' }}>
+            <Link href="/onboarding" className="btn btn-primary" style={{ padding: '1.1rem 2.5rem', fontSize: '1.1rem', width: '100%', maxWidth: '300px' }}>
+              Get Started <ArrowRight size={20} />
             </Link>
-            <Link href="#pricing" className="btn btn-secondary" style={{ padding: '1.1rem 2.5rem', fontSize: '1.1rem' }}>
+            <Link href="#pricing" className="btn btn-secondary" style={{ padding: '1.1rem 2.5rem', fontSize: '1.1rem', width: '100%', maxWidth: '300px' }}>
               View Pricing
             </Link>
           </div>
@@ -253,9 +253,8 @@ export default function Home() {
             </ul>
 
             <Link href="/onboarding" className="btn btn-primary" style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '1.1rem', fontSize: '1.1rem' }}>
-              Start 14-Day Free Trial <ArrowRight size={20} />
+              Get Started <ArrowRight size={20} />
             </Link>
-            <p style={{ marginTop: '1rem', color: '#555', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>No credit card required to start</p>
           </div>
         </section>
 
@@ -281,15 +280,15 @@ export default function Home() {
 
       {/* ─── FOOTER ─── */}
       <footer style={{ padding: '4rem 2rem', background: '#000', borderTop: '1px solid var(--surface-border)' }}>
-        <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '2rem' }}>
+        <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '2rem', flexDirection: 'column', textAlign: 'center' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <ShieldAlert style={{ color: 'var(--primary)' }} size={22} />
-              <span style={{ fontSize: '1.15rem', fontWeight: 700, fontFamily: 'var(--font-display)' }}>OEM Alert Inc.</span>
+              <span style={{ fontSize: '1.15rem', fontWeight: 700, fontFamily: 'var(--font-display)' }}>Vulnerability scanner</span>
             </div>
-            <p style={{ color: '#555', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}>© 2026 OEM Alert Inc. All rights reserved.</p>
+            <p style={{ color: '#555', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}>© 2026 Vulnerability scanner. All rights reserved.</p>
           </div>
-          <div style={{ display: 'flex', gap: '2rem', fontSize: '0.85rem' }}>
+          <div style={{ display: 'flex', gap: '2rem', fontSize: '0.85rem', flexWrap: 'wrap', justifyContent: 'center' }}>
             <Link href="/privacy" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Privacy</Link>
             <Link href="/terms" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Terms</Link>
             <Link href="/status" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Status</Link>

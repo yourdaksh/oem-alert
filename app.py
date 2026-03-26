@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import logging
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -1881,7 +1882,8 @@ def show_settings():
                     else:
                         invite = st.session_state.db_ops.create_invitation(invite_email, user.organization_id, invite_role)
                         if invite:
-                            invite_link = f"http://localhost:8501/?token={invite.token}"
+                            dashboard_url = os.environ.get('NEXT_PUBLIC_DASHBOARD_URL', 'https://oem-alert-dashboard.onrender.com')
+                            invite_link = f"{dashboard_url}/?token={invite.token}"
                             
                             if st.session_state.email_service.send_invitation_email(invite_email, invite_link, invite_role):
                                 st.success(f"Invitation sent to {invite_email}")

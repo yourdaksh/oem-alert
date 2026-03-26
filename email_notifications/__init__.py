@@ -1,6 +1,7 @@
 """
 Email notification system for vulnerability alerts
 """
+import os
 import smtplib
 import yagmail
 from email.mime.text import MIMEText
@@ -267,7 +268,7 @@ class EmailNotificationService:
                 <p>Please log in to the platform to investigate and resolve this issue.</p>
                 
                 <div style="text-align: center; margin-top: 30px;">
-                    <a href="http://localhost:8501/" style="background-color: #00d4aa; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                    <a href="{os.environ.get('NEXT_PUBLIC_DASHBOARD_URL', 'https://oem-alert-dashboard.onrender.com')}/" style="background-color: #00d4aa; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                         Open Dashboard
                     </a>
                 </div>
@@ -287,7 +288,7 @@ class EmailNotificationService:
         ID: {vulnerability_id}
         Severity: {severity}
         
-        Please log in to http://localhost:8501/ to take action.
+        Please log in to {os.environ.get('NEXT_PUBLIC_DASHBOARD_URL', 'https://oem-alert-dashboard.onrender.com')}/ to take action.
         """
         
         return self._send_email(

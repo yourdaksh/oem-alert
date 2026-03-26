@@ -91,7 +91,7 @@ def sign_up_user(email: str, password: str, metadata: Optional[Dict[str, Any]] =
             }
         else:
             sign_up_data["options"] = {
-                "email_redirect_to": "http://localhost:8501"
+                "email_redirect_to": os.environ.get("NEXT_PUBLIC_DASHBOARD_URL", "https://oem-alert-dashboard.onrender.com")
             }
         
         response = client.auth.sign_up(sign_up_data)

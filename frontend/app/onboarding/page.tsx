@@ -38,7 +38,7 @@ export default function OnboardingPage() {
   const handleCheckout = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/payments/onboarding-checkout`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://oem-alert-api.onrender.com'}/payments/onboarding-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
