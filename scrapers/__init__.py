@@ -10,11 +10,23 @@ from scrapers.android import AndroidScraper
 from scrapers.schneider import SchneiderScraper
 from scrapers.cisco import CiscoScraper
 from scrapers.debian import DebianScraper
+from scrapers.microsoft import MicrosoftScraper
 from scrapers.redhat import RedHatScraper
-from scrapers.paloalto import PaloAltoScraper
-from scrapers.fortinet import FortinetScraper
 from scrapers.vmware import VMwareScraper
+from scrapers.fortinet import FortinetScraper
+from scrapers.paloalto import PaloAltoScraper
+from scrapers.juniper import JuniperScraper
+from scrapers.checkpoint import CheckPointScraper
+from scrapers.ibm import IBMScraper
+from scrapers.hpe import HPEScraper
+from scrapers.dell import DellScraper
+from scrapers.apple import AppleScraper
+from scrapers.sap import SAPScraper
+from scrapers.adobe import AdobeScraper
+from scrapers.apache import ApacheScraper
+from scrapers.nginx import NginxScraper
 from scrapers.citrix import CitrixScraper
+
 from config import get_all_oems, get_enabled_oems
 import logging
 
@@ -29,11 +41,23 @@ SCRAPER_REGISTRY: Dict[str, Type[BaseScraper]] = {
     'schneider': SchneiderScraper,
     'cisco': CiscoScraper,
     'debian': DebianScraper,
+    'microsoft': MicrosoftScraper,
     'redhat': RedHatScraper,
-    'paloalto': PaloAltoScraper,
-    'fortinet': FortinetScraper,
     'vmware': VMwareScraper,
+    'fortinet': FortinetScraper,
+    'paloalto': PaloAltoScraper,
+    'juniper': JuniperScraper,
+    'checkpoint': CheckPointScraper,
+    'ibm': IBMScraper,
+    'hpe': HPEScraper,
+    'dell': DellScraper,
+    'apple': AppleScraper,
+    'sap': SAPScraper,
+    'adobe': AdobeScraper,
+    'apache': ApacheScraper,
+    'nginx': NginxScraper,
     'citrix': CitrixScraper,
+
 }
 
 class ScraperManager:

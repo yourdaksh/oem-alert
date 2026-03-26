@@ -1,10 +1,5 @@
-<<<<<<< HEAD
-from scrapers.base import RSSScraper
-import re
-from datetime import datetime
-=======
 """
-Red Hat Security Advisories scraper
+Microsoft Security Response Center scraper
 """
 import re
 from datetime import datetime
@@ -13,67 +8,38 @@ from scrapers.base import RSSScraper
 import logging
 
 logger = logging.getLogger(__name__)
->>>>>>> origin/main
 
-class RedHatScraper(RSSScraper):
-    """Scraper for Red Hat Security Advisories"""
+class MicrosoftScraper(RSSScraper):
+    """Scraper for Microsoft Security Response Center"""
     
-<<<<<<< HEAD
-    def extract_product_name(self, title: str, description: str) -> str:
-        """Extract product name from RHSA title"""
-        # Format often: "Important: chromium-browser security update" or "Moderate: kernel security update"
-        # We want to extract "chromium-browser" or "kernel"
-        
-        # Remove severity prefix if present (e.g., "Important: ")
-        clean_title = re.sub(r'^(Important|Moderate|Low|Critical):\s+', '', title, flags=re.IGNORECASE)
-        
-        # Extract product name (usually before "security update" or "update")
-        match = re.search(r'(.+?)\s+(?:security\s+)?update', clean_title, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-            
-        return super().extract_product_name(title, description)
-
-    def extract_severity_from_text(self, text: str) -> str:
-        """Extract severity from RHSA title"""
-        # RHSA titles usually start with severity: "Important: ..."
-        match = re.search(r'^(Important|Moderate|Low|Critical)', text, re.IGNORECASE)
-        if match:
-            return self.normalize_severity(match.group(1))
-        return super().extract_severity_from_text(text)
-
-    def scrape_vulnerabilities(self):
-        """Scrape vulnerabilities from RSS feed"""
-        rss_url = self.oem_config.get('rss_url')
-        if not rss_url:
-            return []
-        
-        return self.parse_rss_feed(rss_url)
-=======
     def scrape_vulnerabilities(self) -> List[Dict[str, Any]]:
-        """Scrape Red Hat vulnerabilities"""
+        """Scrape Microsoft vulnerabilities"""
         vulnerabilities = []
         
-        # Scrape the security updates page
+        # Scrape the MSRC update guide page
         vuln_url = self.oem_config.get('vulnerability_url')
         if vuln_url:
             soup = self.get_page(vuln_url)
             if soup:
-                vulnerabilities.extend(self.parse_redhat_page(soup))
+                vulnerabilities.extend(self.parse_microsoft_page(soup))
         
         return vulnerabilities
     
-    def parse_redhat_page(self, soup) -> List[Dict[str, Any]]:
-        """Parse Red Hat security page"""
+    def parse_microsoft_page(self, soup) -> List[Dict[str, Any]]:
+        """Parse Microsoft security update page"""
         vulnerabilities = []
         
         try:
-            cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
-            processed_cves = set()
-            
             # Look for CVE entries in links
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I))
             
+            # Also look for CVE text in page content
+            cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
+            cve_texts = soup.find_all(string=cve_pattern)
+            
+            processed_cves = set()
+            
+            # Process links first
             for cve_link in cve_links[:50]:
                 try:
                     cve_id = cve_link.text.strip() or cve_link.get('href', '').split('/')[-1]
@@ -87,19 +53,25 @@ class RedHatScraper(RSSScraper):
                         continue
                     processed_cves.add(cve_id)
                     
+                    # Find parent container
                     parent = cve_link.find_parent(['div', 'section', 'article', 'tr', 'td'])
                     if not parent:
                         continue
                     
-                    title = parent.find(['h1', 'h2', 'h3', 'h4', 'strong'])
-                    title = title.text.strip() if title else cve_id
+                    # Extract title/description
+                    title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'strong'])
+                    title = title_elem.text.strip() if title_elem else cve_id
                     
-                    desc = parent.find('p') or parent.find('div', class_=re.compile(r'description', re.I))
-                    description = desc.text.strip() if desc else title
+                    desc_elem = parent.find('p') or parent.find('div', class_=re.compile(r'description|summary', re.I))
+                    description = desc_elem.text.strip() if desc_elem else title
                     
+                    # Extract severity
                     severity = self.extract_severity_from_text(title + " " + description)
+                    
+                    # Extract product
                     product_name = self.extract_product_name(title, description)
                     
+                    # Extract date
                     published_date = datetime.now()
                     date_elem = parent.find('time') or parent.find('span', class_=re.compile(r'date', re.I))
                     if date_elem:
@@ -122,11 +94,10 @@ class RedHatScraper(RSSScraper):
                     vulnerabilities.append(vuln_record)
                     
                 except Exception as e:
-                    logger.error(f"Error parsing Red Hat CVE: {e}")
+                    logger.error(f"Error parsing Microsoft CVE: {e}")
                     continue
             
-            # Also look for CVE text in page content
-            cve_texts = soup.find_all(string=cve_pattern)
+            # Process text content for CVEs
             for cve_text in cve_texts[:50]:
                 try:
                     cve_match = cve_pattern.search(cve_text)
@@ -139,17 +110,17 @@ class RedHatScraper(RSSScraper):
                     processed_cves.add(cve_id)
                     
                     parent = cve_text.parent
-                    while parent and parent.name not in ['div', 'section', 'article', 'tr', 'td', 'li']:
+                    while parent and parent.name not in ['div', 'section', 'article', 'tr', 'td', 'li', 'p']:
                         parent = parent.parent
                     
                     if not parent:
                         continue
                     
-                    title = parent.find(['h1', 'h2', 'h3', 'h4', 'strong'])
-                    title = title.text.strip() if title else cve_id
+                    title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'strong', 'a'])
+                    title = title_elem.text.strip() if title_elem else cve_id
                     
-                    desc = parent.find('p') or parent.find('div', class_=re.compile(r'description', re.I))
-                    description = desc.text.strip() if desc else parent.get_text()[:500]
+                    desc_elem = parent.find('p') or parent.find('div', class_=re.compile(r'description|summary', re.I))
+                    description = desc_elem.text.strip() if desc_elem else parent.get_text()[:500]
                     
                     severity = self.extract_severity_from_text(title + " " + description)
                     product_name = self.extract_product_name(title, description)
@@ -176,27 +147,27 @@ class RedHatScraper(RSSScraper):
                     vulnerabilities.append(vuln_record)
                     
                 except Exception as e:
-                    logger.error(f"Error parsing Red Hat CVE text: {e}")
+                    logger.error(f"Error parsing Microsoft CVE text: {e}")
                     continue
                     
         except Exception as e:
-            logger.error(f"Error parsing Red Hat page: {e}")
+            logger.error(f"Error parsing Microsoft page: {e}")
         
         return vulnerabilities
     
     def extract_product_name(self, title: str, description: str) -> str:
-        """Extract Red Hat product name"""
+        """Extract Microsoft product name"""
         text = (title + " " + description).lower()
         
         products = [
-            'red hat enterprise linux', 'rhel', 'fedora', 'centos',
-            'openshift', 'ansible', 'jboss', 'wildfly', 'quay',
-            'podman', 'buildah', 'skopeo', 'cri-o'
+            'windows', 'office', 'azure', 'exchange', 'sharepoint',
+            'sql server', 'visual studio', 'edge', 'internet explorer',
+            'outlook', 'word', 'excel', 'powerpoint', 'teams',
+            'onedrive', 'dynamics', 'power bi', 'active directory'
         ]
         
         for product in products:
             if product in text:
                 return product.title()
         
-        return "Red Hat Product"
->>>>>>> origin/main
+        return "Microsoft Product"

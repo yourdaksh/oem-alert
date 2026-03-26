@@ -14,18 +14,21 @@ from database.operations import DatabaseOperations
 from database.models import Vulnerability, Subscription, ScanLog
 from scrapers import create_scraper_manager
 from email_notifications import create_email_service
+from slack_notifications import create_slack_service
 from config import get_all_oems, get_enabled_oems
 from utils.ai_analyst import generate_risk_assessment
+from utils.supabase_client import authenticate_user, is_supabase_enabled, sign_up_user
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="Vulnerability Scraper",
-    page_icon="",
+    page_icon="🔒",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 
 if 'db_ops' not in st.session_state:
     st.session_state.db_ops = None
@@ -33,6 +36,12 @@ if 'scraper_manager' not in st.session_state:
     st.session_state.scraper_manager = None
 if 'email_service' not in st.session_state:
     st.session_state.email_service = None
+if 'slack_service' not in st.session_state:
+    st.session_state.slack_service = None
+if 'supabase_session' not in st.session_state:
+    st.session_state.supabase_session = None
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = None
 
 def initialize_services():
     """Initialize database and services"""
@@ -48,6 +57,10 @@ def initialize_services():
         
         if st.session_state.email_service is None:
             st.session_state.email_service = create_email_service(st.session_state.db_ops)
+        
+        if st.session_state.slack_service is None:
+            # Initialize Slack service
+            st.session_state.slack_service = create_slack_service(st.session_state.db_ops)
         
         return True
     except Exception as e:
@@ -212,7 +225,6 @@ def main():
     invite_token = query_params.get("token")
 
     if not st.session_state.authenticated:
-        # Centered Layout for Login using Columns
         
         st.markdown("<div style='height: 5vh;'></div>", unsafe_allow_html=True)
         
@@ -231,62 +243,32 @@ def main():
                         Next-Gen Vulnerability Intelligence Platform
                     </p>
                 </div>
-                """, 
-                unsafe_allow_html=True
-            )
             
-            # Login Card
+            # Check if Supabase is enabled
+            use_supabase_auth = is_supabase_enabled()
             
-            # --- Invitation Acceptance Flow ---
-            if invite_token:
-                st.info(" You have been invited to join an organization!")
-                invite = st.session_state.db_ops.get_invitation_by_token(invite_token)
-                
-                if invite:
-                    st.write(f"Joining as **{invite.role}**")
-                    with st.form("accept_invite_form"):
-                        new_username = st.text_input("Choose Username", placeholder="e.g., cyber_ninja")
-                        new_password = st.text_input("Choose Password", type="password")
-                        confirm_password = st.text_input("Confirm Password", type="password")
-                        
-                        submit_btn = st.form_submit_button("Complete Registration", use_container_width=True)
-                        if submit_btn:
-                            if new_password != confirm_password:
-                                st.error("Passwords do not match")
-                            elif not new_username:
-                                st.error("Username required")
-                            else:
-                                user = st.session_state.db_ops.accept_invitation(invite_token, new_username, new_password)
-                                if user:
-                                    st.success("Registration successful! Please login.")
-                                    # Clear token from URL (experimental)
-                                    st.query_params.clear()
-                                else:
-                                    st.error("Registration failed. Token might be invalid or username taken.")
-                else:
-                    st.error("Invalid or expired invitation token.")
-
-            # --- Login / Register Flow ---
-            else:
-                tab1, tab2 = st.tabs([" Login", " Register Org"])
+            if use_supabase_auth:
+                # Supabase authentication mode
+                tab1, tab2 = st.tabs([" Sign In", " Sign Up"])
                 
                 with tab1:
-                    with st.form("login_form"):
+                    with st.form("login_form", clear_on_submit=False):
                         email = st.text_input("Email", placeholder="admin@example.com")
                         password = st.text_input("Password", type="password", placeholder="••••••••")
                         
                         st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
                         
                         if st.form_submit_button("Access Platform", use_container_width=True):
-                            user = st.session_state.db_ops.verify_login(email, password)
-                            if user:
+                            auth_result = authenticate_user(email, password)
+                            if auth_result:
                                 st.session_state.authenticated = True
-                                st.session_state.user = user
-                                st.success(f"Welcome back, {user.username}!")
+                                st.session_state.supabase_session = auth_result.get("session")
+                                st.session_state.user_email = email
+                                st.success("Login successful! Initializing platform...")
                                 st.rerun()
                             else:
                                 st.error("Invalid email or password")
-
+                
                 with tab2:
                     with st.form("register_org_form"):
                         st.write("Create a new Organization")
@@ -298,12 +280,12 @@ def main():
                         st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
 
                         if st.form_submit_button(" Launch Organization", use_container_width=True):
-                            existing_user = st.session_state.db_ops.get_user_by_email(admin_email)
-                            if existing_user:
-                                st.error("User with this email already exists.")
-                            else:
-                                org = st.session_state.db_ops.create_organization(org_name)
-                                if org:
+                            # (Local registration logic here as it creates the org in local DB)
+                            org = st.session_state.db_ops.create_organization(org_name)
+                            if org:
+                                # For Supabase, we'd also need to sign up the user in Supabase
+                                signup_result = sign_up_user(admin_email, admin_password)
+                                if signup_result:
                                     user = st.session_state.db_ops.create_user(
                                         username=admin_username,
                                         email=admin_email,
@@ -311,13 +293,92 @@ def main():
                                         role="Owner",
                                         org_id=org.id
                                     )
-                                    # Set owner
-                                    org.owner_id = user.id
-                                    st.session_state.db_ops.db.commit()
-                                    
-                                    st.success("Organization created! Please login.")
+                                    st.success("Registration successful! Please login.")
                                 else:
-                                    st.error("Failed to create organization. Name might be taken.")
+                                    st.error("Failed to create Supabase account.")
+                            else:
+                                st.error("Failed to create organization.")
+            else:
+                # --- Invitation Acceptance Flow ---
+                if invite_token:
+                    st.info(" You have been invited to join an organization!")
+                    invite = st.session_state.db_ops.get_invitation_by_token(invite_token)
+                    
+                    if invite:
+                        st.write(f"Joining as **{invite.role}**")
+                        with st.form("accept_invite_form"):
+                            new_username = st.text_input("Choose Username", placeholder="e.g., cyber_ninja")
+                            new_password = st.text_input("Choose Password", type="password")
+                            confirm_password = st.text_input("Confirm Password", type="password")
+                            
+                            submit_btn = st.form_submit_button("Complete Registration", use_container_width=True)
+                            if submit_btn:
+                                if new_password != confirm_password:
+                                    st.error("Passwords do not match")
+                                elif not new_username:
+                                    st.error("Username required")
+                                else:
+                                    user = st.session_state.db_ops.accept_invitation(invite_token, new_username, new_password)
+                                    if user:
+                                        st.success("Registration successful! Please login.")
+                                        st.query_params.clear()
+                                    else:
+                                        st.error("Registration failed.")
+                    else:
+                        st.error("Invalid or expired invitation token.")
+
+                # --- Local Login / Register Flow ---
+                else:
+                    tab1, tab2 = st.tabs([" Login", " Register Org"])
+                    
+                    with tab1:
+                        with st.form("login_form"):
+                            email = st.text_input("Email", placeholder="admin@example.com")
+                            password = st.text_input("Password", type="password", placeholder="••••••••")
+                            
+                            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+                            
+                            if st.form_submit_button("Access Platform", use_container_width=True):
+                                user = st.session_state.db_ops.verify_login(email, password)
+                                if user:
+                                    st.session_state.authenticated = True
+                                    st.session_state.user = user
+                                    st.success(f"Welcome back, {user.username}!")
+                                    st.rerun()
+                                else:
+                                    st.error("Invalid email or password")
+
+                    with tab2:
+                        with st.form("register_org_form"):
+                            st.write("Create a new Organization")
+                            org_name = st.text_input("Organization Name", placeholder="Acme Corp")
+                            admin_username = st.text_input("Admin Username", placeholder="admin_user")
+                            admin_email = st.text_input("Admin Email", placeholder="admin@acme.com")
+                            admin_password = st.text_input("Admin Password", type="password")
+                            
+                            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+
+                            if st.form_submit_button(" Launch Organization", use_container_width=True):
+                                existing_user = st.session_state.db_ops.get_user_by_email(admin_email)
+                                if existing_user:
+                                    st.error("User with this email already exists.")
+                                else:
+                                    org = st.session_state.db_ops.create_organization(org_name)
+                                    if org:
+                                        user = st.session_state.db_ops.create_user(
+                                            username=admin_username,
+                                            email=admin_email,
+                                            password=admin_password,
+                                            role="Owner",
+                                            org_id=org.id
+                                        )
+                                        # Set owner
+                                        org.owner_id = user.id
+                                        st.session_state.db_ops.db.commit()
+                                        
+                                        st.success("Organization created! Please login.")
+                                    else:
+                                        st.error("Failed to create organization.")
             
             # Footer
             st.markdown(
@@ -328,8 +389,10 @@ def main():
                 """,
                 unsafe_allow_html=True
             )
+
         
         st.stop()
+
 
 
 
@@ -351,17 +414,28 @@ def main():
     
     # Get current user for sidebar display
     user = st.session_state.get("user")
-    username = user.username if user else "Admin"
+    
+    if st.session_state.get("authenticated") and not user:
+         # Suppabase user?
+         user_display = st.session_state.get("user_email", "Admin")
+    else:
+         user_display = user.username if user else "Admin"
 
     st.sidebar.markdown(
         f"""
         <div style='background: rgba(57, 255, 20, 0.1); border-radius: 12px; padding: 1rem; margin-bottom: 2rem; 
                     border: 1px solid rgba(57, 255, 20, 0.3);'>
             <div style='color: #39FF14; font-weight: 600; text-align: center;'>
-                 Welcome, {username}!
+                 Welcome, {user_display}!
             </div>
             <div style='color: #a0a0a0; font-size: 0.9rem; text-align: center; margin-top: 0.5rem;'>
                 System Status: <span style='color: #39FF14;'> OPERATIONAL</span>
+            </div>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+
             </div>
         </div>
         """, 
@@ -400,6 +474,7 @@ def main():
             "Export Data": " Export Data",
             "Settings": " Settings"
         }.get(x, x)
+
     )
 
     if page == "Dashboard":
@@ -548,7 +623,7 @@ def show_dashboard():
                        text-shadow: 0 0 15px rgba(57, 255, 20, 0.3); font-family: "Space Grotesk", sans-serif;'>
                  DASHBOARD OVERVIEW
             </h2>
-            <div style='color: #a0a0a0; font-size: 1rem; font-weight: 300;'>
+            <div style='color: #cccccc; font-size: 1rem; font-weight: 400;'>
                 Real-time vulnerability monitoring and threat intelligence
             </div>
         </div>
@@ -565,6 +640,7 @@ def show_dashboard():
 
     # --- Key Metrics ---
     st.markdown("###  Key Performance Indicators")
+
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -627,6 +703,7 @@ def show_dashboard():
             """, 
             unsafe_allow_html=True
         )
+
     
     st.markdown("<div style='height: 2rem;'></div>", unsafe_allow_html=True)
     
@@ -672,40 +749,34 @@ def show_dashboard():
             }.get(vuln.severity_level, '#8e8e93')
             
             severity_icon = {
-                'Critical': '',
-                'High': '',
-                'Medium': '',
-                'Low': ''
+                'Critical': '🚨',
+                'High': '⚠️',
+                'Medium': 'ℹ️',
+                'Low': '✅'
             }.get(vuln.severity_level, '')
             
             st.markdown(
                 f"""
-                <div style='background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(30, 30, 30, 0.9) 100%); 
-                            border-radius: 16px; padding: 1.5rem; margin-bottom: 1rem; 
-                            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px {severity_color}20;
-                            border: 2px solid {severity_color}40; backdrop-filter: blur(20px);'>
+                <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; 
+                            box-shadow: 0 0 20px {severity_color}30, 0 4px 8px rgba(0, 0, 0, 0.5); border-left: 4px solid {severity_color};'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;'>
-                        <div style='display: flex; align-items: center; gap: 1rem;'>
-                            <div style='font-size: 1.5rem;'>{severity_icon}</div>
                             <div>
-                                <div style='color: {severity_color}; font-weight: 600; font-size: 1.1rem; 
-                                           text-shadow: 0 0 10px {severity_color}50;'>
-                                    {vuln.severity_level} - {vuln.unique_id}
+                            <div style='color: {severity_color}; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.25rem; text-shadow: 0 0 10px {severity_color}50;'>
+                                     {severity_icon} {vuln.severity_level} - {vuln.unique_id}
                                 </div>
-                                <div style='color: #a0a0a0; font-size: 0.9rem;'>{vuln.oem_name}</div>
-                            </div>
+                            <div style='color: #cccccc; font-size: 0.9rem;'>{vuln.oem_name}</div>
                         </div>
                         <div style='text-align: right;'>
                             <div style='color: #39FF14; font-weight: 600; font-family: "JetBrains Mono", monospace;'>
                                 {vuln.cvss_score or 'N/A'}
                             </div>
-                            <div style='color: #a0a0a0; font-size: 0.8rem;'>CVSS</div>
+                            <div style='color: #888888; font-size: 0.8rem;'>CVSS</div>
                         </div>
                     </div>
-                    <div style='color: #ffffff; font-weight: 500; margin-bottom: 0.5rem;'>
+                    <div style='color: #ffffff; font-weight: 500; margin-bottom: 0.5rem; font-size: 1rem;'>
                         {vuln.product_name}
                     </div>
-                    <div style='color: #a0a0a0; font-size: 0.9rem;'>
+                    <div style='color: #cccccc; font-size: 0.9rem;'>
                         Published: {vuln.published_date.strftime('%Y-%m-%d')}
                     </div>
                 </div>
@@ -742,11 +813,11 @@ def show_dashboard():
             """
             <div style='background: rgba(20, 20, 20, 0.5); border-radius: 16px; padding: 2rem; text-align: center; 
                         border: 2px solid rgba(57, 255, 20, 0.3);'>
-                <div style='font-size: 2rem; margin-bottom: 1rem; color: #39FF14;'></div>
+                <div style='font-size: 2rem; margin-bottom: 1rem; color: #39FF14;'>🛡️</div>
                 <div style='color: #39FF14; font-weight: 600; font-size: 1.2rem; margin-bottom: 0.5rem;'>
                     No Recent Critical or High Severity Vulnerabilities
                 </div>
-                <div style='color: #a0a0a0; font-size: 0.9rem;'>
+                <div style='color: #cccccc; font-size: 0.95rem;'>
                     All systems are secure! No new critical or high-severity vulnerabilities found in the last 7 days.
                 </div>
             </div>
@@ -776,31 +847,29 @@ def show_dashboard():
         with cols[i % 3]:
             is_enabled = status['enabled']
             status_color = '#39FF14' if is_enabled else '#ff3b30'
-            status_icon = '' if is_enabled else ''
+            status_icon = '🟢' if is_enabled else '🔴'
             status_text = 'ACTIVE' if is_enabled else 'DISABLED'
             
             last_scan = scan_stats['last_scans_by_oem'].get(oem_id, 'Never')
             
             st.markdown(
                 f"""
-                <div style='background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(30, 30, 30, 0.9) 100%); 
-                            border-radius: 16px; padding: 1.5rem; margin-bottom: 1rem; 
-                            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px {status_color}20;
-                            border: 2px solid {status_color}40; backdrop-filter: blur(20px);'>
+                <div style='background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; 
+                            box-shadow: 0 0 20px {status_color}30, 0 4px 8px rgba(0, 0, 0, 0.5); border-left: 4px solid {status_color};'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;'>
-                        <div style='font-size: 1.5rem;'>{status_icon}</div>
-                        <div style='color: {status_color}; font-weight: 600; font-size: 0.8rem; 
-                                   text-transform: uppercase; letter-spacing: 1px;'>
-                            {status_text}
+                        <div style='color: {status_color}; font-weight: 700; font-size: 0.85rem; 
+                                   text-transform: uppercase; letter-spacing: 0.5px; padding: 0.25rem 0.75rem;
+                                   background: {status_color}20; border-radius: 6px; text-shadow: 0 0 10px {status_color}50;'>
+                            {status_icon} {status_text}
                         </div>
                     </div>
-                    <div style='color: #ffffff; font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem;'>
+                    <div style='color: #ffffff; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.5rem;'>
                         {status['name']}
                     </div>
-                    <div style='color: #a0a0a0; font-size: 0.9rem; margin-bottom: 0.5rem;'>
+                    <div style='color: #cccccc; font-size: 0.9rem; margin-bottom: 0.5rem;'>
                         {status['description']}
                     </div>
-                    <div style='display: flex; justify-content: space-between; margin-top: 1rem;'>
+                    <div style='display: flex; justify-content: space-between; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #1a1a1a;'>
                         <div>
                             <div style='color: #39FF14; font-size: 0.8rem; font-weight: 600;'>SCAN INTERVAL</div>
                             <div style='color: #a0a0a0; font-size: 0.9rem;'>{status['scan_interval_hours']}h</div>
@@ -818,6 +887,9 @@ def show_dashboard():
 def show_vulnerabilities():
     """Show vulnerabilities with enhanced filtering options"""
     st.header(" Vulnerability Browser")
+=======
+    st.header("Vulnerability Browser")
+>>>>>>> origin/main
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1083,8 +1155,8 @@ def show_vulnerabilities():
         st.info("No vulnerabilities found matching your criteria.")
 
 def show_subscriptions():
-    """Show email subscription management"""
-    st.header(" Email Subscription Management")
+    """Show email and Slack subscription management"""
+    st.header(" Email & Slack Subscription Management")
     db_ops = st.session_state.db_ops
     all_subs = db_ops.get_subscriptions()
     if not all_subs:
@@ -1097,6 +1169,7 @@ def show_subscriptions():
             </div>
             """, unsafe_allow_html=True
         )
+
     
     st.subheader("Add New Subscription")
     demo_email = "admin@example.com" if not all_subs else ""
@@ -1104,9 +1177,23 @@ def show_subscriptions():
     demo_sev = ["Critical", "High"] if not all_subs else ["Critical"]
 
     with st.form("add_subscription"):
+        notification_type = st.radio(
+            "Notification Type",
+            ["Email", "Slack", "Both"],
+            horizontal=True
+        )
+        
         col1, col2 = st.columns(2)
         with col1:
-            email = st.text_input("Email Address", value=demo_email)
+            email = st.text_input("Email Address", value=demo_email if notification_type in ["Email", "Both"] else "", 
+                                 disabled=(notification_type == "Slack"))
+            slack_webhook = st.text_input(
+                "Slack Webhook URL", 
+                value="",
+                help="Get webhook URL from Slack: Settings → Apps → Incoming Webhooks",
+                disabled=(notification_type == "Email"),
+                type="password"
+            )
             oem_name = st.selectbox(
                 "OEM (leave blank for all)",
                 ["All"] + list(st.session_state.db_ops.get_vulnerability_stats()['oem_distribution'].keys()),
@@ -1121,21 +1208,42 @@ def show_subscriptions():
             )
         submitted = st.form_submit_button("Add Subscription")
         if submitted:
-            if email and severity_filter:
-                oem = None if oem_name == "All" else oem_name
-                severity_str = ",".join(severity_filter)
-                try:
-                    subscription = st.session_state.db_ops.add_subscription(
-                        email=email,
-                        oem_name=oem,
-                        product_name=product_name if product_name else None,
-                        severity_filter=severity_str
-                    )
-                    st.success(f"Subscription added successfully! ID: {subscription.id}")
-                except Exception as e:
-                    st.error(f"Failed to add subscription: {e}")
+            if severity_filter:
+                if notification_type == "Email" and not email:
+                    st.error("Please provide an email address for email subscriptions.")
+                elif notification_type == "Slack" and not slack_webhook:
+                    st.error("Please provide a Slack webhook URL for Slack subscriptions.")
+                elif notification_type == "Both" and (not email or not slack_webhook):
+                    st.error("Please provide both email and Slack webhook URL.")
+                else:
+                    oem = None if oem_name == "All" else oem_name
+                    severity_str = ",".join(severity_filter)
+                    try:
+                        # Add email subscription if needed
+                        if notification_type in ["Email", "Both"]:
+                            email_sub = st.session_state.db_ops.add_subscription(
+                                email=email,
+                                slack_webhook_url=None,
+                                oem_name=oem,
+                                product_name=product_name if product_name else None,
+                                severity_filter=severity_str
+                            )
+                            st.success(f"Email subscription added successfully! ID: {email_sub.id}")
+                        
+                        # Add Slack subscription if needed
+                        if notification_type in ["Slack", "Both"]:
+                            slack_sub = st.session_state.db_ops.add_subscription(
+                                email=None,
+                                slack_webhook_url=slack_webhook,
+                                oem_name=oem,
+                                product_name=product_name if product_name else None,
+                                severity_filter=severity_str
+                            )
+                            st.success(f"Slack subscription added successfully! ID: {slack_sub.id}")
+                    except Exception as e:
+                        st.error(f"Failed to add subscription: {e}")
             else:
-                st.error("Please provide email and select at least one severity level.")
+                st.error("Please select at least one severity level.")
     
     st.subheader("Manage Existing Subscriptions")
     
@@ -1144,7 +1252,8 @@ def show_subscriptions():
     if subscriptions:
         df_subs = pd.DataFrame([{
             'ID': sub.id,
-            'Email': sub.email,
+            'Email': sub.email or 'N/A',
+            'Slack': 'Yes' if (hasattr(sub, 'slack_webhook_url') and sub.slack_webhook_url) else 'No',
             'OEM': sub.oem_name or 'All',
             'Product': sub.product_name or 'All',
             'Severity': sub.severity_filter,
@@ -1177,6 +1286,7 @@ def show_manual_scan():
     st.subheader("Scan All OEMs")
     
     if st.button(" Run Full Scan", type="primary"):
+
         with st.spinner("Scanning all OEMs for vulnerabilities..."):
             try:
                 db_ops = st.session_state.db_ops
@@ -1190,7 +1300,7 @@ def show_manual_scan():
                 new_ids = set()
                 
                 for oem_id, vulnerabilities in results.items():
-                    st.write(f"**{oem_id.title()}:** {len(vulnerabilities)} vulnerabilities found")
+                    st.markdown(f"<p style='color: #ffffff;'><strong>{oem_id.title()}:</strong> {len(vulnerabilities)} vulnerabilities found</p>", unsafe_allow_html=True)
                     
                     # Add vulnerabilities to database
                     for vuln_data in vulnerabilities:
@@ -1206,19 +1316,17 @@ def show_manual_scan():
                             if is_new:
                                 total_new += 1
                                 new_ids.add(uid)
-
-                                notification_results = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
-                                if notification_results['sent'] > 0:
-                                    st.info(f"Sent {notification_results['sent']} email notification{'s' if notification_results['sent'] != 1 else ''} for {uid}.")
-                                total_emails_sent += notification_results['sent']
+                                # Send email notifications
+                                email_results = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
+                                if email_results['sent'] > 0:
+                                    st.info(f"Sent {email_results['sent']} email notification{'s' if email_results['sent'] != 1 else ''} for {uid}.")
+                                total_emails_sent += email_results['sent']
                                 
-                                # Slack Alert for Critical
-                                if vuln.severity_level == "Critical":
-                                    from utils.slack_notifier import send_slack_alert
-                                    webhook = st.session_state.db_ops.get_setting("slack_webhook_url")
-                                    if webhook:
-                                        send_slack_alert(webhook, vuln)
-                                        st.success(f"Sent Slack alert for {uid}")
+                                # Send Slack notifications
+                                slack_results = st.session_state.slack_service.send_bulk_vulnerability_alerts(vuln)
+                                if slack_results['sent'] > 0:
+                                    st.info(f"Sent {slack_results['sent']} Slack notification{'s' if slack_results['sent'] != 1 else ''} for {uid}.")
+                                total_emails_sent += slack_results['sent']  # Reusing variable for total notifications
 
                         except Exception as e:
                             logger.error(f"Error adding vulnerability: {e}")
@@ -1263,10 +1371,17 @@ def show_manual_scan():
                                 if is_new:
                                     new_count += 1
                                     new_ids.add(uid)
-                                    notif = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
-                                    emails_sent += notif['sent']
-                                    if notif['sent'] > 0:
-                                        st.info(f"Sent {notif['sent']} email notification{'s' if notif['sent'] != 1 else ''} for {uid}.")
+                                    # Send email notifications
+                                    email_notif = st.session_state.email_service.send_bulk_vulnerability_alerts(vuln)
+                                    emails_sent += email_notif['sent']
+                                    if email_notif['sent'] > 0:
+                                        st.info(f"Sent {email_notif['sent']} email notification{'s' if email_notif['sent'] != 1 else ''} for {uid}.")
+                                    
+                                    # Send Slack notifications
+                                    slack_notif = st.session_state.slack_service.send_bulk_vulnerability_alerts(vuln)
+                                    emails_sent += slack_notif['sent']  # Reusing variable for total notifications
+                                    if slack_notif['sent'] > 0:
+                                        st.info(f"Sent {slack_notif['sent']} Slack notification{'s' if slack_notif['sent'] != 1 else ''} for {uid}.")
                             except Exception as e:
                                 logger.error(f"Error adding vulnerability: {e}")
                         st.success(f"Found {len(vulnerabilities)} vulnerabilities, {new_count} new, {len(vulnerabilities)-new_count} already known.")
@@ -1280,6 +1395,7 @@ def show_manual_scan():
 def show_analytics():
     """Show analytics and charts"""
     st.header(" Analytics & Insights")
+
     
 
     stats = st.session_state.db_ops.get_vulnerability_stats()
@@ -1291,7 +1407,15 @@ def show_analytics():
         fig_severity = px.pie(
             values=list(stats['severity_distribution'].values()),
             names=list(stats['severity_distribution'].keys()),
-            title="Vulnerabilities by Severity"
+            title="Vulnerabilities by Severity",
+            color_discrete_sequence=['#ff3333', '#ff6666', '#ffcc00', '#00ff41', '#cccccc']
+        )
+        fig_severity.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='#ffffff',
+            title_font_color='#00ff41',
+            legend_font_color='#cccccc'
         )
         st.plotly_chart(fig_severity, use_container_width=True)
     
@@ -1305,7 +1429,15 @@ def show_analytics():
             x=[item[0] for item in sorted_oems],
             y=[item[1] for item in sorted_oems],
             title="Vulnerabilities by OEM",
-            labels={'x': 'OEM', 'y': 'Count'}
+            labels={'x': 'OEM', 'y': 'Count'},
+            color_discrete_sequence=['#00ff41']
+        )
+        fig_oem.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='#ffffff',
+            title_font_color='#00ff41',
+            legend_font_color='#cccccc'
         )
         fig_oem.update_xaxes(tickangle=45)
         st.plotly_chart(fig_oem, use_container_width=True)
@@ -1322,7 +1454,15 @@ def show_analytics():
             x=date_counts.index,
             y=date_counts.values,
             title="Vulnerabilities Published Over Time (Last 30 Days)",
-            labels={'x': 'Date', 'y': 'Count'}
+            labels={'x': 'Date', 'y': 'Count'},
+            color_discrete_sequence=['#00ff41']
+        )
+        fig_trend.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='#ffffff',
+            title_font_color='#00ff41',
+            legend_font_color='#cccccc'
         )
         st.plotly_chart(fig_trend, use_container_width=True)
     
@@ -1343,6 +1483,7 @@ def show_analytics():
 def show_export_data():
     """Show data export functionality"""
     st.header(" Export Data")
+
     
     st.subheader("Export Vulnerabilities")
     
@@ -1404,6 +1545,7 @@ def show_export_data():
             csv_data = df_export.to_csv(index=False)
             st.download_button(
                 label=" Download CSV",
+
                 data=csv_data,
                 file_name=f"vulnerabilities_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
@@ -1414,6 +1556,7 @@ def show_export_data():
             json_data = df_export.to_json(orient='records', indent=2)
             st.download_button(
                 label=" Download JSON",
+
                 data=json_data,
                 file_name=f"vulnerabilities_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                 mime="application/json"
@@ -1429,6 +1572,7 @@ def show_export_data():
                 
                 st.download_button(
                     label=" Download Excel",
+
                     data=excel_data,
                     file_name=f"vulnerabilities_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1481,16 +1625,92 @@ def show_export_data():
 def show_settings():
     """Show settings and configuration"""
     st.header(" Settings & Configuration")
+
     
     st.subheader("Email Configuration")
     
-    if st.button("Test Email Configuration"):
-        with st.spinner("Testing email configuration..."):
-            success = st.session_state.email_service.test_email_configuration()
-            if success:
-                st.success("Email configuration test successful!")
-            else:
-                st.error("Email configuration test failed. Check your SMTP settings.")
+    # Check if email service is initialized
+    if st.session_state.email_service is None:
+        st.warning("⚠️ Email service not initialized. Please refresh the page.")
+        if st.button("Initialize Email Service"):
+            try:
+                st.session_state.email_service = create_email_service(st.session_state.db_ops)
+                st.success("✅ Email service initialized!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to initialize email service: {str(e)}")
+    else:
+        # Show current email configuration (masked)
+        email_username = st.session_state.email_service.email_username if st.session_state.email_service.email_username else "Not configured"
+        smtp_server = st.session_state.email_service.smtp_server if st.session_state.email_service.smtp_server else "Not configured"
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Email:** {email_username}")
+        with col2:
+            st.write(f"**SMTP Server:** {smtp_server}")
+        
+        if st.button("Test Email Configuration"):
+            with st.spinner("Testing email configuration..."):
+                try:
+                    # Ensure email service is properly initialized
+                    if st.session_state.email_service is None:
+                        st.session_state.email_service = create_email_service(st.session_state.db_ops)
+                    
+                    # Test the configuration
+                    import logging
+                    logging.basicConfig(level=logging.INFO)
+                    
+                    success = st.session_state.email_service.test_email_configuration()
+                    
+                    if success:
+                        st.success("✅ Email configuration test successful! Check your inbox at " + st.session_state.email_service.email_username)
+                    else:
+                        st.error("❌ Email configuration test failed.")
+                        
+                        # Show configuration details
+                        st.warning("**Current Configuration:**")
+                        st.write(f"- Email: {st.session_state.email_service.email_username}")
+                        st.write(f"- SMTP Server: {st.session_state.email_service.smtp_server}:{st.session_state.email_service.smtp_port}")
+                        st.write(f"- Password: {'✅ Set' if st.session_state.email_service.email_password else '❌ Not set'}")
+                        
+                        st.info("💡 **Troubleshooting Steps:**\n"
+                               "1. Verify your Gmail App Password is correct\n"
+                               "2. Make sure 2-Factor Authentication is enabled\n"
+                               "3. Check that there are no extra spaces in the app password\n"
+                               "4. Verify SMTP settings in your .env file\n"
+                               "5. Check the terminal/console where Streamlit is running for detailed error messages")
+                        
+                        # Try to get more details
+                        try:
+                            import yagmail
+                            test_yag = yagmail.SMTP(
+                                st.session_state.email_service.email_username,
+                                st.session_state.email_service.email_password
+                            )
+                            test_yag.close()
+                            st.info("✅ Direct SMTP connection test passed - issue might be with email sending")
+                        except Exception as smtp_error:
+                            st.error(f"❌ SMTP Connection Error: {str(smtp_error)}")
+                            
+                except Exception as e:
+                    st.error(f"❌ Error testing email configuration: {str(e)}")
+                    st.info("💡 Check the terminal/console for detailed error messages")
+                    import traceback
+                    with st.expander("Show detailed error traceback"):
+                        st.code(traceback.format_exc())
+                    
+                    # Try to diagnose the issue
+                    st.warning("**Diagnostics:**")
+                    try:
+                        if st.session_state.email_service:
+                            st.write(f"- Email service exists: ✅")
+                            st.write(f"- Email username: {st.session_state.email_service.email_username}")
+                            st.write(f"- SMTP server: {st.session_state.email_service.smtp_server}")
+                        else:
+                            st.write("- Email service: ❌ Not initialized")
+                    except:
+                        st.write("- Could not access email service")
     
     st.subheader("Slack Integration")
     current_webhook = st.session_state.db_ops.get_setting("slack_webhook_url", "")

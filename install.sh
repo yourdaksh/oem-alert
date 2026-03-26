@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# OEM Vulnerability Alert Platform - Installation Script
-echo "Installing OEM Vulnerability Alert Platform..."
+# Vulnerability Scrapper - Installation Script
+echo "Installing Vulnerability Scrapper..."
 
 # Check if Python 3 is installed
 if ! command -v python3 &> /dev/null; then

@@ -1,0 +1,101 @@
+"""
+Juniper Networks Security Advisories scraper
+"""
+import re
+from datetime import datetime
+from typing import List, Dict, Any
+from scrapers.base import RSSScraper
+import logging
+
+logger = logging.getLogger(__name__)
+
+class JuniperScraper(RSSScraper):
+    """Scraper for Juniper Networks Security Advisories"""
+    
+    def scrape_vulnerabilities(self) -> List[Dict[str, Any]]:
+        """Scrape Juniper vulnerabilities"""
+        vulnerabilities = []
+        
+        vuln_url = self.oem_config.get('vulnerability_url')
+        if vuln_url:
+            soup = self.get_page(vuln_url)
+            if soup:
+                vulnerabilities.extend(self.parse_juniper_page(soup))
+        
+        return vulnerabilities
+    
+    def parse_juniper_page(self, soup) -> List[Dict[str, Any]]:
+        """Parse Juniper security advisories page"""
+        vulnerabilities = []
+        
+        try:
+            # Look for CVE references in the page
+            cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
+            
+            # Find all text containing CVE IDs
+            cve_texts = soup.find_all(string=cve_pattern)
+            
+            for cve_text in cve_texts:
+                try:
+                    cve_match = cve_pattern.search(cve_text)
+                    if not cve_match:
+                        continue
+                    
+                    cve_id = cve_match.group(0)
+                    
+                    # Get parent element for context
+                    parent = cve_text.parent
+                    while parent and parent.name not in ['div', 'article', 'section', 'tr', 'td', 'li']:
+                        parent = parent.parent
+                    
+                    if not parent:
+                        continue
+                    
+                    # Extract title
+                    title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'a'])
+                    title = title_elem.get_text().strip() if title_elem else cve_id
+                    
+                    # Extract description
+                    desc_elem = parent.find(['p', 'div'], class_=re.compile(r'description|summary|content', re.I))
+                    description = desc_elem.get_text().strip() if desc_elem else parent.get_text()[:500]
+                    
+                    # Extract severity
+                    severity = self.extract_severity_from_text(title + " " + description)
+                    
+                    # Extract product
+                    product_name = self.extract_product_name(title, description)
+                    
+                    # Extract date
+                    date_elem = parent.find(['time', 'span'], class_=re.compile(r'date', re.I))
+                    published_date = datetime.now()
+                    if date_elem:
+                        date_text = date_elem.get('datetime') or date_elem.text
+                        parsed_date = self.parse_date(date_text)
+                        if parsed_date:
+                            published_date = parsed_date
+                    
+                    # Extract CVSS
+                    cvss_score = self.extract_cvss_score(parent.get_text())
+                    
+                    vuln_record = self.create_vulnerability_record(
+                        unique_id=cve_id[:50],
+                        product_name=product_name,
+                        product_version=None,
+                        severity_level=severity,
+                        vulnerability_description=f"{title}\n\n{description}",
+                        mitigation_strategy=None,
+                        published_date=published_date,
+                        source_url=self.oem_config.get('vulnerability_url'),
+                        cvss_score=cvss_score
+                    )
+                    
+                    vulnerabilities.append(vuln_record)
+                    
+                except Exception as e:
+                    logger.error(f"Error parsing Juniper CVE: {e}")
+                    continue
+        
+        except Exception as e:
+            logger.error(f"Error parsing Juniper page: {e}")
+        
+        return vulnerabilities

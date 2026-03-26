@@ -1,4 +1,4 @@
-# OEM Vulnerability Alert Platform
+# Vulnerability Scrapper
 
 A comprehensive platform for monitoring critical and high-severity vulnerabilities from major IT/OT hardware and software OEMs.
 
@@ -18,25 +18,43 @@ A comprehensive platform for monitoring critical and high-severity vulnerabiliti
    pip install -r requirements.txt
    ```
 
-2. **Initialize Database**
+2. **Configure Database** (Choose one)
+   
+   **Option A: SQLite (Default - Simple Setup)**
+   ```bash
+   # No configuration needed, uses SQLite by default
+   ```
+   
+   **Option B: Supabase PostgreSQL (Recommended for Production)**
+   ```bash
+   cp env.example .env
+   # Edit .env and set DATABASE_TYPE=supabase
+   # Add your Supabase credentials (see SUPABASE_SETUP.md)
+   ```
+
+3. **Initialize Database**
    ```bash
    python setup_database.py
    ```
 
-3. **Configure Email Settings** (Optional)
+4. **Configure Email Settings** (Optional)
    ```bash
-   cp .env.example .env
+   cp env.example .env
    # Edit .env with your SMTP settings
    ```
 
-4. **Run the Application**
+5. **Run the Application**
    ```bash
    ./run.sh
    # Or manually: streamlit run app.py
    ```
 
-5. **Access Dashboard**
+6. **Access Dashboard**
    Open your browser to: http://localhost:8501
+   
+   **Login Credentials:**
+   - If using Supabase: Sign up with email/password or use existing account
+   - If using SQLite: Username: `admin`, Password: `admin123`
 
 ## 🤖 AI Features Setup
 
@@ -98,6 +116,17 @@ oem-alert/
 
 ## Configuration
 
+### Database Configuration
+
+**SQLite (Default)**
+- No configuration needed
+- Database file: `vulnerability_alerts.db`
+
+**Supabase PostgreSQL**
+- See [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for detailed instructions
+- Set `DATABASE_TYPE=supabase` in `.env`
+- Requires Supabase project credentials
+
 ### Email Settings
 Create a `.env` file with your SMTP settings:
 ```
@@ -106,6 +135,16 @@ SMTP_PORT=587
 EMAIL_USERNAME=your-email@gmail.com
 EMAIL_PASSWORD=your-app-password
 ```
+
+### Authentication
+
+**SQLite Mode:**
+- Default credentials: Username: `admin`, Password: `admin123`
+
+**Supabase Mode:**
+- User sign-up and login via email/password
+- Secure session management
+- Password reset functionality
 
 ### OEM Configuration
 Edit `config/oems.yaml` to add new OEMs or modify existing ones.

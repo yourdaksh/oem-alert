@@ -71,6 +71,16 @@ oems_config:
     scan_interval_hours: 24
     description: "Debian Security Advisories"
 
+  microsoft:
+    name: "Microsoft"
+    base_url: "https://www.microsoft.com"
+    vulnerability_url: "https://msrc.microsoft.com/update-guide/vulnerability"
+    rss_url: "https://msrc.microsoft.com/update-guide/rss"
+    scraper_class: "MicrosoftScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Microsoft Security Response Center"
+
   redhat:
     name: "Red Hat"
     base_url: "https://access.redhat.com"
@@ -120,6 +130,107 @@ oems_config:
     enabled: true
     scan_interval_hours: 24
     description: "Citrix Security Bulletins"
+
+  juniper:
+    name: "Juniper Networks"
+    base_url: "https://www.juniper.net"
+    vulnerability_url: "https://supportportal.juniper.net/s/article/Juniper-Security-Advisories"
+    rss_url: "https://supportportal.juniper.net/s/article/Juniper-Security-Advisories"
+    scraper_class: "JuniperScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Juniper Networks Security Advisories"
+
+  checkpoint:
+    name: "Check Point"
+    base_url: "https://www.checkpoint.com"
+    vulnerability_url: "https://supportcenter.checkpoint.com/supportcenter/portal/user/portal/articles/security-advisories"
+    rss_url: "https://supportcenter.checkpoint.com/supportcenter/portal/user/portal/articles/security-advisories"
+    scraper_class: "CheckPointScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Check Point Security Advisories"
+
+  ibm:
+    name: "IBM"
+    base_url: "https://www.ibm.com"
+    vulnerability_url: "https://www.ibm.com/support/pages/node/7141455"
+    rss_url: "https://www.ibm.com/support/pages/node/7141455"
+    scraper_class: "IBMScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "IBM Security Bulletins"
+
+  hpe:
+    name: "HP/HPE"
+    base_url: "https://www.hpe.com"
+    vulnerability_url: "https://support.hpe.com/connect/s/security-bulletins"
+    rss_url: "https://support.hpe.com/connect/s/security-bulletins"
+    scraper_class: "HPEScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "HP/HPE Security Bulletins"
+
+  dell:
+    name: "Dell"
+    base_url: "https://www.dell.com"
+    vulnerability_url: "https://www.dell.com/support/kbdoc/en-us/000180039/dell-security-advisories"
+    rss_url: "https://www.dell.com/support/kbdoc/en-us/000180039/dell-security-advisories"
+    scraper_class: "DellScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Dell Security Advisories"
+
+  apple:
+    name: "Apple"
+    base_url: "https://www.apple.com"
+    vulnerability_url: "https://support.apple.com/en-us/HT201222"
+    rss_url: "https://developer.apple.com/news/rss/news.rss"
+    scraper_class: "AppleScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Apple Security Updates"
+
+  sap:
+    name: "SAP"
+    base_url: "https://www.sap.com"
+    vulnerability_url: "https://support.sap.com/en/my-support/knowledge-base/security-notes-assessments.html"
+    rss_url: "https://support.sap.com/en/my-support/knowledge-base/security-notes-assessments.html"
+    scraper_class: "SAPScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "SAP Security Notes"
+
+  adobe:
+    name: "Adobe"
+    base_url: "https://www.adobe.com"
+    vulnerability_url: "https://helpx.adobe.com/security.html"
+    rss_url: "https://helpx.adobe.com/security.html"
+    scraper_class: "AdobeScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Adobe Security Bulletins"
+
+  apache:
+    name: "Apache"
+    base_url: "https://www.apache.org"
+    vulnerability_url: "https://www.apache.org/security/"
+    rss_url: "https://www.apache.org/security/"
+    scraper_class: "ApacheScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Apache Security Advisories"
+
+  nginx:
+    name: "Nginx"
+    base_url: "https://www.nginx.com"
+    vulnerability_url: "https://nginx.org/en/security_advisories.html"
+    rss_url: "https://nginx.org/en/security_advisories.html"
+    scraper_class: "NginxScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Nginx Security Advisories"
+
 
 
 # Severity mapping for standardization

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# OEM Vulnerability Alert Platform - Setup Script
+# Vulnerability Scrapper - Setup Script
 # This script sets up the cron job for automated vulnerability scanning
 
-echo "Setting up OEM Vulnerability Alert Platform..."
+echo "Setting up Vulnerability Scrapper..."
 
 # Get the current directory
 CURRENT_DIR=$(pwd)

@@ -90,11 +90,12 @@ class Vulnerability(Base):
     )
 
 class Subscription(Base):
-    """Model for user email subscriptions"""
+    """Model for user email and Slack subscriptions"""
     __tablename__ = "subscriptions"
     
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), nullable=False, index=True)
+    email = Column(String(255), nullable=True, index=True)  # Optional for Slack-only subscriptions
+    slack_webhook_url = Column(String(500), nullable=True, index=True)  # Slack webhook URL
     oem_name = Column(String(100), nullable=True, index=True)  # None means all OEMs
     product_name = Column(String(200), nullable=True, index=True)  # None means all products
     severity_filter = Column(String(20), nullable=False, default="Critical,High")  # Comma-separated
@@ -109,6 +110,7 @@ class Subscription(Base):
     # Indexes
     __table_args__ = (
         Index('idx_email_active', 'email', 'is_active'),
+        Index('idx_slack_webhook', 'slack_webhook_url', 'is_active'),
         Index('idx_oem_product', 'oem_name', 'product_name'),
     )
 
@@ -133,13 +135,14 @@ class ScanLog(Base):
     )
 
 class NotificationLog(Base):
-    """Model for tracking sent email notifications"""
+    """Model for tracking sent email and Slack notifications"""
     __tablename__ = "notification_logs"
     
     id = Column(Integer, primary_key=True, index=True)
     subscription_id = Column(Integer, ForeignKey("subscriptions.id"), nullable=False)
     vulnerability_id = Column(Integer, ForeignKey("vulnerabilities.id"), nullable=False)
-    email_sent = Column(Boolean, default=True, nullable=False)
+    email_sent = Column(Boolean, default=False, nullable=False)
+    slack_sent = Column(Boolean, default=False, nullable=False)
     sent_date = Column(DateTime, default=func.now(), nullable=False, index=True)
     error_message = Column(Text, nullable=True)
     

@@ -1,10 +1,5 @@
-<<<<<<< HEAD
-from scrapers.base import RSSScraper
-import re
-from datetime import datetime
-=======
 """
-Red Hat Security Advisories scraper
+Apache Security Advisories scraper
 """
 import re
 from datetime import datetime
@@ -13,68 +8,39 @@ from scrapers.base import RSSScraper
 import logging
 
 logger = logging.getLogger(__name__)
->>>>>>> origin/main
 
-class RedHatScraper(RSSScraper):
-    """Scraper for Red Hat Security Advisories"""
+class ApacheScraper(RSSScraper):
+    """Scraper for Apache Security Advisories"""
     
-<<<<<<< HEAD
-    def extract_product_name(self, title: str, description: str) -> str:
-        """Extract product name from RHSA title"""
-        # Format often: "Important: chromium-browser security update" or "Moderate: kernel security update"
-        # We want to extract "chromium-browser" or "kernel"
-        
-        # Remove severity prefix if present (e.g., "Important: ")
-        clean_title = re.sub(r'^(Important|Moderate|Low|Critical):\s+', '', title, flags=re.IGNORECASE)
-        
-        # Extract product name (usually before "security update" or "update")
-        match = re.search(r'(.+?)\s+(?:security\s+)?update', clean_title, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-            
-        return super().extract_product_name(title, description)
-
-    def extract_severity_from_text(self, text: str) -> str:
-        """Extract severity from RHSA title"""
-        # RHSA titles usually start with severity: "Important: ..."
-        match = re.search(r'^(Important|Moderate|Low|Critical)', text, re.IGNORECASE)
-        if match:
-            return self.normalize_severity(match.group(1))
-        return super().extract_severity_from_text(text)
-
-    def scrape_vulnerabilities(self):
-        """Scrape vulnerabilities from RSS feed"""
-        rss_url = self.oem_config.get('rss_url')
-        if not rss_url:
-            return []
-        
-        return self.parse_rss_feed(rss_url)
-=======
     def scrape_vulnerabilities(self) -> List[Dict[str, Any]]:
-        """Scrape Red Hat vulnerabilities"""
+        """Scrape Apache vulnerabilities"""
         vulnerabilities = []
         
-        # Scrape the security updates page
+        # Try RSS feed first
+        rss_url = self.oem_config.get('rss_url')
+        if rss_url:
+            vulnerabilities.extend(self.parse_rss_feed(rss_url))
+        
+        # Also scrape the main page
         vuln_url = self.oem_config.get('vulnerability_url')
         if vuln_url:
             soup = self.get_page(vuln_url)
             if soup:
-                vulnerabilities.extend(self.parse_redhat_page(soup))
+                vulnerabilities.extend(self.parse_apache_page(soup))
         
         return vulnerabilities
     
-    def parse_redhat_page(self, soup) -> List[Dict[str, Any]]:
-        """Parse Red Hat security page"""
+    def parse_apache_page(self, soup) -> List[Dict[str, Any]]:
+        """Parse Apache security advisories page"""
         vulnerabilities = []
         
         try:
             cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}')
             processed_cves = set()
             
-            # Look for CVE entries in links
+            # Look for CVE in links first
             cve_links = soup.find_all('a', href=re.compile(r'CVE-\d{4}-\d{4,7}', re.I))
-            
-            for cve_link in cve_links[:50]:
+            for cve_link in cve_links[:100]:
                 try:
                     cve_id = cve_link.text.strip() or cve_link.get('href', '').split('/')[-1]
                     cve_match = cve_pattern.search(cve_id)
@@ -87,47 +53,51 @@ class RedHatScraper(RSSScraper):
                         continue
                     processed_cves.add(cve_id)
                     
-                    parent = cve_link.find_parent(['div', 'section', 'article', 'tr', 'td'])
+                    parent = cve_link.find_parent(['div', 'section', 'article', 'tr', 'td', 'li'])
                     if not parent:
                         continue
                     
-                    title = parent.find(['h1', 'h2', 'h3', 'h4', 'strong'])
-                    title = title.text.strip() if title else cve_id
+                    title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'a'])
+                    title = title_elem.get_text().strip() if title_elem else cve_id
                     
-                    desc = parent.find('p') or parent.find('div', class_=re.compile(r'description', re.I))
-                    description = desc.text.strip() if desc else title
+                    desc_elem = parent.find(['p', 'div'], class_=re.compile(r'description|summary', re.I))
+                    description = desc_elem.get_text().strip() if desc_elem else parent.get_text()[:500]
                     
                     severity = self.extract_severity_from_text(title + " " + description)
                     product_name = self.extract_product_name(title, description)
                     
+                    date_elem = parent.find(['time', 'span'], class_=re.compile(r'date', re.I))
                     published_date = datetime.now()
-                    date_elem = parent.find('time') or parent.find('span', class_=re.compile(r'date', re.I))
                     if date_elem:
                         date_text = date_elem.get('datetime') or date_elem.text
                         parsed_date = self.parse_date(date_text)
                         if parsed_date:
                             published_date = parsed_date
                     
+                    cvss_score = self.extract_cvss_score(parent.get_text())
+                    
                     vuln_record = self.create_vulnerability_record(
-                        unique_id=cve_id,
+                        unique_id=cve_id[:50],
                         product_name=product_name,
                         product_version=None,
                         severity_level=severity,
                         vulnerability_description=f"{title}\n\n{description}",
                         mitigation_strategy=None,
                         published_date=published_date,
-                        source_url=cve_link.get('href')
+                        source_url=cve_link.get('href') or self.oem_config.get('vulnerability_url'),
+                        cvss_score=cvss_score
                     )
                     
                     vulnerabilities.append(vuln_record)
                     
                 except Exception as e:
-                    logger.error(f"Error parsing Red Hat CVE: {e}")
+                    logger.error(f"Error parsing Apache CVE link: {e}")
                     continue
             
             # Also look for CVE text in page content
             cve_texts = soup.find_all(string=cve_pattern)
-            for cve_text in cve_texts[:50]:
+            
+            for cve_text in cve_texts[:100]:
                 try:
                     cve_match = cve_pattern.search(cve_text)
                     if not cve_match:
@@ -139,28 +109,30 @@ class RedHatScraper(RSSScraper):
                     processed_cves.add(cve_id)
                     
                     parent = cve_text.parent
-                    while parent and parent.name not in ['div', 'section', 'article', 'tr', 'td', 'li']:
+                    while parent and parent.name not in ['div', 'article', 'section', 'tr', 'td', 'li']:
                         parent = parent.parent
                     
                     if not parent:
                         continue
                     
-                    title = parent.find(['h1', 'h2', 'h3', 'h4', 'strong'])
-                    title = title.text.strip() if title else cve_id
+                    title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'a'])
+                    title = title_elem.get_text().strip() if title_elem else cve_id
                     
-                    desc = parent.find('p') or parent.find('div', class_=re.compile(r'description', re.I))
-                    description = desc.text.strip() if desc else parent.get_text()[:500]
+                    desc_elem = parent.find(['p', 'div'], class_=re.compile(r'description|summary', re.I))
+                    description = desc_elem.get_text().strip() if desc_elem else parent.get_text()[:500]
                     
                     severity = self.extract_severity_from_text(title + " " + description)
                     product_name = self.extract_product_name(title, description)
                     
+                    date_elem = parent.find(['time', 'span'], class_=re.compile(r'date', re.I))
                     published_date = datetime.now()
-                    date_elem = parent.find('time') or parent.find('span', class_=re.compile(r'date', re.I))
                     if date_elem:
                         date_text = date_elem.get('datetime') or date_elem.text
                         parsed_date = self.parse_date(date_text)
                         if parsed_date:
                             published_date = parsed_date
+                    
+                    cvss_score = self.extract_cvss_score(parent.get_text())
                     
                     vuln_record = self.create_vulnerability_record(
                         unique_id=cve_id[:50],
@@ -170,33 +142,17 @@ class RedHatScraper(RSSScraper):
                         vulnerability_description=f"{title}\n\n{description}",
                         mitigation_strategy=None,
                         published_date=published_date,
-                        source_url=self.oem_config.get('vulnerability_url')
+                        source_url=self.oem_config.get('vulnerability_url'),
+                        cvss_score=cvss_score
                     )
                     
                     vulnerabilities.append(vuln_record)
                     
                 except Exception as e:
-                    logger.error(f"Error parsing Red Hat CVE text: {e}")
+                    logger.error(f"Error parsing Apache CVE: {e}")
                     continue
-                    
+        
         except Exception as e:
-            logger.error(f"Error parsing Red Hat page: {e}")
+            logger.error(f"Error parsing Apache page: {e}")
         
         return vulnerabilities
-    
-    def extract_product_name(self, title: str, description: str) -> str:
-        """Extract Red Hat product name"""
-        text = (title + " " + description).lower()
-        
-        products = [
-            'red hat enterprise linux', 'rhel', 'fedora', 'centos',
-            'openshift', 'ansible', 'jboss', 'wildfly', 'quay',
-            'podman', 'buildah', 'skopeo', 'cri-o'
-        ]
-        
-        for product in products:
-            if product in text:
-                return product.title()
-        
-        return "Red Hat Product"
->>>>>>> origin/main
