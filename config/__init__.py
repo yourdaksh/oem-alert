@@ -66,7 +66,7 @@ APP_CONFIG = {
 
 # Streamlit configuration
 STREAMLIT_CONFIG = {
-    "page_title": "OEM Vulnerability Alert Platform",
+    "page_title": "Vulnerability Scraper Platform",
     "page_icon": "🚨",
     "layout": "wide",
     "initial_sidebar_state": "expanded"

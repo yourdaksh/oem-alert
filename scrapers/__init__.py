@@ -10,6 +10,11 @@ from scrapers.android import AndroidScraper
 from scrapers.schneider import SchneiderScraper
 from scrapers.cisco import CiscoScraper
 from scrapers.debian import DebianScraper
+from scrapers.redhat import RedHatScraper
+from scrapers.paloalto import PaloAltoScraper
+from scrapers.fortinet import FortinetScraper
+from scrapers.vmware import VMwareScraper
+from scrapers.citrix import CitrixScraper
 from config import get_all_oems, get_enabled_oems
 import logging
 
@@ -24,6 +29,11 @@ SCRAPER_REGISTRY: Dict[str, Type[BaseScraper]] = {
     'schneider': SchneiderScraper,
     'cisco': CiscoScraper,
     'debian': DebianScraper,
+    'redhat': RedHatScraper,
+    'paloalto': PaloAltoScraper,
+    'fortinet': FortinetScraper,
+    'vmware': VMwareScraper,
+    'citrix': CitrixScraper,
 }
 
 class ScraperManager:

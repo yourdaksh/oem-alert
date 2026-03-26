@@ -253,6 +253,87 @@ class EmailNotificationService:
             logger.error(f"Failed to send email: {e}")
             return False
     
+    def send_assignment_email(self, assignee_email: str, assignee_name: str, 
+                            assigner_name: str, vulnerability_title: str, 
+                            vulnerability_id: str, severity: str = "High") -> bool:
+        """Send email notification for task assignment"""
+        subject = f"ACTION REQUIRED: New Assignment - [{severity}] {vulnerability_title}"
+        
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+                <h2 style="color: #00d4aa; margin-top: 0;">New Task Assignment</h2>
+                <p>Hello <strong>{assignee_name}</strong>,</p>
+                <p>You have been assigned a new vulnerability remediation task by <strong>{assigner_name}</strong>.</p>
+                
+                <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #00d4aa; margin: 20px 0;">
+                    <h3 style="margin-top: 0;">{vulnerability_title}</h3>
+                    <p style="margin-bottom: 5px;"><strong>ID:</strong> {vulnerability_id}</p>
+                    <p style="margin-bottom: 5px;"><strong>Severity:</strong> {severity}</p>
+                </div>
+                
+                <p>Please log in to the platform to investigate and resolve this issue.</p>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="http://localhost:8501/" style="background-color: #00d4aa; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                        Open Dashboard
+                    </a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+        ACTION REQUIRED: New Assignment
+        
+        Hello {assignee_name},
+        
+        You have been assigned the following vulnerability by {assigner_name}:
+        
+        Task: {vulnerability_title}
+        ID: {vulnerability_id}
+        Severity: {severity}
+        
+        Please log in to http://localhost:8501/ to take action.
+        """
+        
+        return self._send_email(
+            to_email=assignee_email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content
+        )
+
+    def send_invitation_email(self, email: str, invite_link: str, role: str) -> bool:
+        """Send invitation email to new user"""
+        subject = "🔑 Invitation to Join OEM Alert Platform"
+        
+        html_content = f"""
+        <html>
+        <body>
+            <h2>You've been invited!</h2>
+            <p>You have been invited to join the OEM Vulnerability Alert Platform as a <strong>{role}</strong>.</p>
+            <p>Click the button below to set up your account and join your organization:</p>
+            
+            <p><a href="{invite_link}" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Accept Invitation</a></p>
+            
+            <p>Or copy this link: {invite_link}</p>
+            <p>This link will expire in 7 days.</p>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+        You've been invited!
+        You have been invited to join the OEM Vulnerability Alert Platform as a {role}.
+        Please visit the following link to accept:
+        {invite_link}
+        """
+        
+        return self._send_email(email, subject, html_content, text_content)
+
     def test_email_configuration(self) -> bool:
         """Test email configuration by sending a test email"""
         try:

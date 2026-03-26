@@ -31,17 +31,34 @@ A comprehensive platform for monitoring critical and high-severity vulnerabiliti
 
 4. **Run the Application**
    ```bash
-   streamlit run app.py
+   ./run.sh
+   # Or manually: streamlit run app.py
    ```
 
 5. **Access Dashboard**
    Open your browser to: http://localhost:8501
 
+## 🤖 AI Features Setup
+
+To use the **AI Analyst** feature:
+1.  Get a free API key from [Google AI Studio](https://aistudio.google.com/).
+2.  Add it to your `.env` file:
+    ```
+    GEMINI_API_KEY=your_api_key_here
+    ```
+
+## 💬 Slack Integration Setup
+
+To use **Slack Alerts**:
+1.  Create a [Incoming Webhook](https://api.slack.com/messaging/webhooks) in your Slack workspace.
+2.  Go to the **Settings** page in the dashboard.
+3.  Paste the Webhook URL and save.
+
 ## Setup Cron Job (Linux/macOS)
 
 Add this to your crontab for hourly scanning:
 ```bash
-0 * * * * cd /path/to/oem-alert && python run_scrapers.py
+0 * * * * cd /path/to/oem-alert && ./venv/bin/python run_scrapers.py
 ```
 
 ## Adding New OEMs

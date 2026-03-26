@@ -71,6 +71,56 @@ oems_config:
     scan_interval_hours: 24
     description: "Debian Security Advisories"
 
+  redhat:
+    name: "Red Hat"
+    base_url: "https://access.redhat.com"
+    vulnerability_url: "https://access.redhat.com/security/security-updates/"
+    rss_url: "https://access.redhat.com/rss/content/security-advisories"
+    scraper_class: "RedHatScraper"
+    enabled: true
+    scan_interval_hours: 12
+    description: "Red Hat Security Advisories"
+
+  paloalto:
+    name: "Palo Alto Networks"
+    base_url: "https://security.paloaltonetworks.com"
+    vulnerability_url: "https://security.paloaltonetworks.com/"
+    rss_url: "https://security.paloaltonetworks.com/rss.xml"
+    scraper_class: "PaloAltoScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Palo Alto Networks Security Advisories"
+
+  fortinet:
+    name: "Fortinet"
+    base_url: "https://www.fortiguard.com"
+    vulnerability_url: "https://www.fortiguard.com/psirt"
+    rss_url: "https://filestore.fortinet.com/fortiguard/rss/ir.xml"
+    scraper_class: "FortinetScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "FortiGuard Labs PSIRT Advisories"
+
+  vmware:
+    name: "VMware"
+    base_url: "https://www.vmware.com"
+    vulnerability_url: "https://www.vmware.com/security/advisories.html"
+    rss_url: "https://www.vmware.com/security/advisories.xml"
+    scraper_class: "VMwareScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "VMware Security Advisories"
+
+  citrix:
+    name: "Citrix"
+    base_url: "https://support.citrix.com"
+    vulnerability_url: "https://support.citrix.com/feed/products/all/securitybulletins.rss"
+    rss_url: "https://support.citrix.com/feed/products/all/securitybulletins.rss"
+    scraper_class: "CitrixScraper"
+    enabled: true
+    scan_interval_hours: 24
+    description: "Citrix Security Bulletins"
+
 
 # Severity mapping for standardization
 severity_mapping:

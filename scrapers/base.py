@@ -4,18 +4,23 @@ Base scraper class and utilities for OEM vulnerability scraping
 import requests
 from bs4 import BeautifulSoup
 try:
+    import selenium
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     HAS_SELENIUM = True
-except Exception:
+except ImportError:
     webdriver = None
     Options = None
     By = None
     WebDriverWait = None
     EC = None
+    HAS_SELENIUM = False
+except Exception as e:
+    # Catch other initialization errors
+    logging.warning(f"Selenium import failed: {e}")
     HAS_SELENIUM = False
 from datetime import datetime, timedelta
 import re
