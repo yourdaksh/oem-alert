@@ -9,6 +9,20 @@ from backend.models_pydantic import VulnerabilityOut
 router = APIRouter(prefix="/vulnerabilities", tags=["Vulnerabilities"])
 
 
+def _enabled_oems_for(org_id: str, supabase: Client) -> list[str]:
+    """Return the list of OEMs the org has subscribed to.
+
+    Scraped rows live in a shared pool (organization_id NULL). We filter at
+    read time so each tenant only sees the vendors they paid to monitor.
+    Empty/"ALL" means unrestricted.
+    """
+    org = supabase.table("organizations").select("enabled_oems").eq("id", org_id).execute()
+    raw = (org.data[0].get("enabled_oems") if org.data else "") or ""
+    if not raw or raw.strip().upper() == "ALL":
+        return []
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 @router.get("/", response_model=List[VulnerabilityOut])
 async def get_vulnerabilities(
     oem: Optional[str] = None,
@@ -20,10 +34,14 @@ async def get_vulnerabilities(
     if not supabase:
         raise HTTPException(status_code=500, detail="Database connection missing")
 
-    query = supabase.table("vulnerabilities").select("*").eq(
-        "organization_id", ctx["organization_id"]
-    )
-    if oem:
+    org_oems = _enabled_oems_for(ctx["organization_id"], supabase)
+
+    query = supabase.table("vulnerabilities").select("*")
+    if org_oems:
+        if oem and oem not in org_oems:
+            return []
+        query = query.in_("oem_name", [oem] if oem else org_oems)
+    elif oem:
         query = query.eq("oem_name", oem)
     if severity:
         query = query.eq("severity_level", severity)
@@ -38,10 +56,12 @@ async def get_vulnerability(
     ctx: dict = Depends(get_current_user_with_org),
     supabase: Client = Depends(get_supabase),
 ):
-    res = supabase.table("vulnerabilities").select("*").eq("id", vuln_id).eq(
-        "organization_id", ctx["organization_id"]
-    ).execute()
-
+    res = supabase.table("vulnerabilities").select("*").eq("id", vuln_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
-    return res.data[0]
+
+    vuln = res.data[0]
+    org_oems = _enabled_oems_for(ctx["organization_id"], supabase)
+    if org_oems and vuln.get("oem_name") not in org_oems:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
+    return vuln

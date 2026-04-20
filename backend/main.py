@@ -34,13 +34,14 @@ app.add_middleware(
 def health_check():
     return {"status": "ok", "service": "OEM Alert Platform API"}
 
-from backend.routes import auth, vulnerabilities, organizations, tasks, payments
+from backend.routes import auth, vulnerabilities, organizations, tasks, payments, scrapers
 
 app.include_router(auth.router)
 app.include_router(vulnerabilities.router)
 app.include_router(organizations.router)
 app.include_router(tasks.router)
 app.include_router(payments.router)
+app.include_router(scrapers.router)
 
 if __name__ == "__main__":
     import uvicorn
