@@ -1,12 +1,16 @@
 'use client';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, Suspense } from 'react';
 import { ShieldAlert, Mail, Lock, ArrowRight, CheckCircle, Eye, EyeOff, Building } from 'lucide-react';
+import { getSupabase, API_URL } from '../../lib/supabase';
 
 function LoginContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const isOnboarded = searchParams.get('onboarded') === 'true';
+  const sessionId = searchParams.get('session_id') || '';
+
   const [mode, setMode] = useState<'login' | 'setup'>(isOnboarded ? 'setup' : 'login');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -20,30 +24,29 @@ function LoginContent() {
 
   const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 8) {
-      alert('Password must be at least 8 characters.');
+    if (!sessionId) {
+      alert('Missing checkout session — please complete payment first.');
       return;
     }
-    if (password !== confirmPassword) {
-      alert('Passwords do not match.');
-      return;
-    }
-    
+    if (password.length < 8) { alert('Password must be at least 8 characters.'); return; }
+    if (password !== confirmPassword) { alert('Passwords do not match.'); return; }
+
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://oem-alert-api.onrender.com'}/auth/setup-account`, {
+      const res = await fetch(`${API_URL}/auth/setup-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
           password,
-          organizationName: orgName
-        })
+          organizationName: orgName,
+          stripeSessionId: sessionId,
+        }),
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Setup failed');
-      
+
       setSetupDone(true);
     } catch (err: any) {
       alert(err.message);
@@ -52,11 +55,19 @@ function LoginContent() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Call Supabase Auth login or backend endpoint
-    // Redirect to Streamlit dashboard on success
-    window.location.href = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://oem-alert-dashboard.onrender.com';
+    setLoading(true);
+    try {
+      const supabase = getSupabase();
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      router.push('/dashboard');
+    } catch (err: any) {
+      alert(err.message || 'Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputStyle = {
@@ -69,10 +80,9 @@ function LoginContent() {
     fontSize: '1rem',
     fontFamily: 'var(--font-sans)',
     outline: 'none',
-    transition: 'border-color 0.3s ease, box-shadow 0.3s ease'
-  };
+    transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
+  } as const;
 
-  // ── SUCCESS STATE ──
   if (setupDone) {
     return (
       <div className="flex-center" style={{ minHeight: '100vh', padding: '2rem' }}>
@@ -82,13 +92,10 @@ function LoginContent() {
           </div>
           <h1 style={{ fontSize: '2rem', marginBottom: '0.75rem', fontFamily: 'var(--font-display)' }}>Account Created!</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', marginBottom: '2.5rem', lineHeight: 1.7 }}>
-            Your organization is now provisioned and your OEM scrapers are being activated. You can now sign in to access the vulnerability dashboard.
+            Your organization is provisioned. Sign in to access your dashboard.
           </p>
-          <button
-            className="btn btn-primary"
-            style={{ padding: '1rem 2.5rem', fontSize: '1.05rem' }}
-            onClick={() => { setMode('login'); setSetupDone(false); }}
-          >
+          <button className="btn btn-primary" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem' }}
+            onClick={() => { setMode('login'); setSetupDone(false); }}>
             Sign In to Dashboard <ArrowRight size={18} />
           </button>
         </div>
@@ -98,7 +105,6 @@ function LoginContent() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Nav */}
       <nav style={{ padding: '1.25rem 2rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textDecoration: 'none', color: 'inherit' }}>
           <ShieldAlert style={{ color: 'var(--primary)' }} size={24} />
@@ -109,7 +115,6 @@ function LoginContent() {
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
         <div className="animate-fade-in-up" style={{ width: '100%', maxWidth: '480px' }}>
 
-          {/* ── SETUP PASSWORD MODE (post-payment) ── */}
           {mode === 'setup' && (
             <>
               <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
@@ -138,10 +143,7 @@ function LoginContent() {
                     </label>
                     <div style={{ position: 'relative' }}>
                       <Mail size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#555' }} />
-                      <input type="email" placeholder="Your email from checkout" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle}
-                        onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px var(--primary-glow)'; }}
-                        onBlur={e => { e.target.style.borderColor = 'var(--surface-border)'; e.target.style.boxShadow = 'none'; }}
-                        required />
+                      <input type="email" placeholder="Your email from checkout" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} required />
                     </div>
                   </div>
 
@@ -183,7 +185,6 @@ function LoginContent() {
             </>
           )}
 
-          {/* ── LOGIN MODE ── */}
           {mode === 'login' && (
             <>
               <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
@@ -202,10 +203,7 @@ function LoginContent() {
                     </label>
                     <div style={{ position: 'relative' }}>
                       <Mail size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#555' }} />
-                      <input type="email" placeholder="name@company.com" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle}
-                        onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px var(--primary-glow)'; }}
-                        onBlur={e => { e.target.style.borderColor = 'var(--surface-border)'; e.target.style.boxShadow = 'none'; }}
-                        required />
+                      <input type="email" placeholder="name@company.com" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} required />
                     </div>
                   </div>
 
@@ -214,28 +212,24 @@ function LoginContent() {
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', marginBottom: '0.6rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
                         <Lock size={16} /> Password
                       </label>
-                      <Link href="#" style={{ fontSize: '0.8rem', color: 'var(--primary)', textDecoration: 'none', fontFamily: 'var(--font-mono)' }}>Forgot password?</Link>
                     </div>
                     <div style={{ position: 'relative' }}>
                       <Lock size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#555' }} />
-                      <input type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} style={inputStyle}
-                        onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px var(--primary-glow)'; }}
-                        onBlur={e => { e.target.style.borderColor = 'var(--surface-border)'; e.target.style.boxShadow = 'none'; }}
-                        required />
+                      <input type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} required />
                       <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: 0 }}>
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
                   </div>
 
-                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '1rem', fontSize: '1.05rem', marginTop: '0.5rem' }}>
-                    Sign In <ArrowRight size={18} />
+                  <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', padding: '1rem', fontSize: '1.05rem', marginTop: '0.5rem', opacity: loading ? 0.7 : 1 }}>
+                    {loading ? 'Signing in...' : 'Sign In'} <ArrowRight size={18} />
                   </button>
                 </form>
               </div>
 
               <p style={{ textAlign: 'center', marginTop: '1.5rem', color: '#444', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-                Don't have an account? <Link href="/onboarding" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Get Started</Link>
+                Don&apos;t have an account? <Link href="/onboarding" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Get Started</Link>
               </p>
             </>
           )}

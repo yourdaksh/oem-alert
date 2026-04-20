@@ -21,3 +21,4 @@ fastapi==0.110.0
 uvicorn==0.27.1
 stripe>=7.0.0
 python-multipart==0.0.9
+email-validator>=2.0.0

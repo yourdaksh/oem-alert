@@ -40,7 +40,8 @@ async def create_onboarding_checkout(request: OnboardingRequest):
                 'quantity': 1,
             }],
             mode='payment',
-            success_url=f"{frontend_url}/login?onboarded=true",
+            customer_creation='always',
+            success_url=f"{frontend_url}/login?onboarded=true&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{frontend_url}/onboarding",
             customer_email=request.email,
             client_reference_id=temp_org_id,
@@ -120,44 +121,28 @@ async def stripe_webhook(request: Request, supabase: Client = Depends(get_supaba
 
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
-        
-        temp_org_id = session.get("client_reference_id")
+
         customer_id = session.get("customer")
-        customer_email = session.get("customer_email") or session.get("customer_details", {}).get("email")
-        
-        metadata = session.get("metadata", {})
+        metadata = session.get("metadata") or {}
         org_name = metadata.get("organization_name", "Unknown Org")
         oems = metadata.get("oems", "")
-        
+
         try:
             existing_org = supabase.table("organizations").select("id").eq("name", org_name).execute()
-            
-            if not existing_org.data:
-                org_res = supabase.table("organizations").insert({
-                    "name": org_name,
-                    "subscription_status": "active",
-                    "stripe_customer_id": customer_id
-                }).execute()
-                
-                if org_res.data:
-                    new_org_id = org_res.data[0]['id']
-                    
-                    if oems:
-                        for oem in oems.split(','):
-                            supabase.table("enabled_oems").insert({
-                                "organization_id": new_org_id,
-                                "oem_name": oem.strip(),
-                                "is_active": True
-                            }).execute()
-                            
+
+            payload = {
+                "subscription_status": "active",
+                "stripe_customer_id": customer_id,
+                "enabled_oems": oems,
+            }
+            if existing_org.data:
+                supabase.table("organizations").update(payload).eq(
+                    "id", existing_org.data[0]["id"]
+                ).execute()
             else:
-                org_id = existing_org.data[0]["id"]
-                supabase.table("organizations").update({
-                    "subscription_status": "active",
-                    "stripe_customer_id": customer_id
-                }).eq("id", org_id).execute()
-                
+                supabase.table("organizations").insert({"name": org_name, **payload}).execute()
+
         except Exception as e:
             print(f"Webhook provisioning error: {str(e)}")
-            
+
     return {"status": "success"}
