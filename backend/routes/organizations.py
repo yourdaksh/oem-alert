@@ -92,7 +92,7 @@ async def create_invite(
         raise HTTPException(status_code=500, detail="Failed to create invitation")
 
     import os
-    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
     return {
         "id": res.data[0]["id"],
         "token": token,
@@ -118,7 +118,7 @@ async def list_invitations(
 
 @router.delete("/invitations/{invite_id}")
 async def revoke_invitation(
-    invite_id: int,
+    invite_id: str,
     ctx: dict = Depends(require_owner),
     supabase: Client = Depends(get_supabase),
 ):

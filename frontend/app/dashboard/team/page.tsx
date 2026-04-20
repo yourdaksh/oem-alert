@@ -12,13 +12,14 @@ type Member = {
 };
 
 type Invitation = {
-  id: number;
+  id: string;
   email: string;
   role: string;
   status: string;
   expires_at: string;
   created_at: string;
   invited_by: string | null;
+  token: string | null;
 };
 
 const ROLES = ['Admin', 'Analyst', 'Viewer'];
@@ -30,7 +31,7 @@ export default function TeamPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('Analyst');
   const [inviting, setInviting] = useState(false);
-  const [copiedInviteId, setCopiedInviteId] = useState<number | null>(null);
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const [selfRole, setSelfRole] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -93,14 +94,14 @@ export default function TeamPage() {
     }
   }
 
-  async function revokeInvite(id: number) {
+  async function revokeInvite(id: string) {
     const headers = { ...(await authHeaders()) };
     const res = await fetch(`${API_URL}/organizations/invitations/${id}`, { method: 'DELETE', headers });
     if (!res.ok) setError((await res.json()).detail || 'Failed to revoke');
     await refresh();
   }
 
-  async function copyInviteLink(token: string, id: number) {
+  async function copyInviteLink(token: string, id: string) {
     const url = `${window.location.origin}/invite/${token}`;
     await navigator.clipboard.writeText(url);
     setCopiedInviteId(id);
