@@ -27,7 +27,7 @@ def _enabled_oems_for(org_id: str, supabase: Client) -> list[str]:
 async def get_vulnerabilities(
     oem: Optional[str] = None,
     severity: Optional[str] = None,
-    limit: int = Query(50, le=500),
+    limit: int = Query(50, le=5000),
     ctx: dict = Depends(get_current_user_with_org),
     supabase: Client = Depends(get_supabase),
 ):

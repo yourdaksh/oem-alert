@@ -69,7 +69,7 @@ export default function VulnerabilitiesPage() {
         if (!token) throw new Error('Not signed in');
         const headers = { Authorization: `Bearer ${token}` };
         const [vRes, mRes] = await Promise.all([
-          fetch(`${API_URL}/vulnerabilities/?limit=500`, { headers }),
+          fetch(`${API_URL}/vulnerabilities/?limit=2500`, { headers }),
           fetch(`${API_URL}/organizations/members`, { headers }),
         ]);
         if (!vRes.ok) throw new Error((await vRes.json()).detail || 'Failed to load vulnerabilities');

@@ -55,7 +55,7 @@ export default function DashboardIndex() {
         if (!token) return;
         const headers = { Authorization: `Bearer ${token}` };
         const [vRes, tRes, uRes] = await Promise.all([
-          fetch(`${API_URL}/vulnerabilities/?limit=500`, { headers }),
+          fetch(`${API_URL}/vulnerabilities/?limit=2500`, { headers }),
           fetch(`${API_URL}/tasks/`, { headers }),
           getSupabase().auth.getUser(),
         ]);
