@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Save, Clock, CheckCircle, Mail, Send, MessageSquare } from 'lucide-react';
+import { Loader2, RefreshCw, Save, Clock, CheckCircle, Mail, Send, MessageSquare, AlertTriangle, Trash2 } from 'lucide-react';
 import { getSupabase, API_URL } from '../../../lib/supabase';
 
 type Org = {
@@ -44,6 +44,10 @@ export default function SettingsPage() {
   const [savingAlerts, setSavingAlerts] = useState(false);
   const [testing, setTesting] = useState(false);
   const [alertFlash, setAlertFlash] = useState<string | null>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetFlash, setResetFlash] = useState<string | null>(null);
 
   async function authHeader(): Promise<Record<string, string>> {
     const { data } = await getSupabase().auth.getSession();
@@ -162,6 +166,32 @@ export default function SettingsPage() {
       setError(e.message);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function resetVulnerabilities() {
+    if (!org) return;
+    setResetting(true);
+    setError(null);
+    setResetFlash(null);
+    try {
+      const headers = await authHeader();
+      const res = await fetch(`${API_URL}/organizations/reset-vulnerabilities`, {
+        method: 'POST', headers,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Reset failed');
+      setResetConfirmOpen(false);
+      setResetConfirmText('');
+      setResetFlash(
+        `Reset complete — ${data.tasks_removed ?? 0} task${data.tasks_removed === 1 ? '' : 's'} removed. Run a scan to repopulate.`
+      );
+      setTimeout(() => setResetFlash(null), 6000);
+      await loadOrg();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -310,6 +340,90 @@ export default function SettingsPage() {
               <div style={{ fontSize: '0.9rem', fontFamily: 'var(--font-mono)', color: '#a1a1aa' }}>{new Date(org.created_at).toLocaleString()}</div>
             </div>
           </div>
+
+          {/* Danger Zone: per-org reset. Lives behind an Owner guard + an
+              exact org-name match so this can't be fired by accident. */}
+          {isOwner && (
+            <div className="glass-card" style={{
+              padding: '1.5rem',
+              border: '1px solid rgba(239,68,68,0.3)',
+              background: 'rgba(239,68,68,0.04)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <AlertTriangle size={18} color="var(--danger)" />
+                <h2 style={{ fontSize: '1.1rem', margin: 0, color: '#fca5a5' }}>Danger Zone</h2>
+              </div>
+              <p style={{ color: '#a1a1aa', fontSize: '0.88rem', lineHeight: 1.55, margin: '0 0 1rem 0' }}>
+                Reset your organization&apos;s vulnerability view. This clears every CVE currently visible to
+                your team, wipes all tasks, and returns the dashboard to its first-scan empty state. Your
+                subscription, team members, alert config, and monitored OEM list are preserved.
+                Running any scan afterwards repopulates the feed.
+              </p>
+              <p style={{ color: '#71717a', fontSize: '0.78rem', margin: '0 0 1rem 0' }}>
+                Note: the shared CVE database is untouched — other tenants are unaffected.
+              </p>
+
+              {!resetConfirmOpen ? (
+                <button onClick={() => setResetConfirmOpen(true)}
+                  style={{
+                    padding: '0.6rem 1.1rem', background: 'rgba(239,68,68,0.12)',
+                    border: '1px solid rgba(239,68,68,0.5)', borderRadius: 8,
+                    color: '#fca5a5', fontSize: '0.85rem', fontWeight: 600,
+                    display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer',
+                  }}>
+                  <Trash2 size={14} /> Reset vulnerabilities
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <label style={{ fontSize: '0.82rem', color: '#d4d4d8' }}>
+                    Type <strong style={{ fontFamily: 'var(--font-mono)', color: '#fca5a5' }}>{org.name}</strong> to confirm:
+                  </label>
+                  <input type="text" autoFocus value={resetConfirmText}
+                    onChange={e => setResetConfirmText(e.target.value)}
+                    placeholder={org.name}
+                    style={{
+                      padding: '0.6rem 0.8rem', background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--surface-border)', borderRadius: 8,
+                      color: 'white', fontSize: '0.9rem',
+                    }} />
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button onClick={resetVulnerabilities}
+                      disabled={resetting || resetConfirmText.trim() !== org.name}
+                      style={{
+                        padding: '0.6rem 1.1rem', background: 'var(--danger)',
+                        border: 'none', borderRadius: 8, color: 'white',
+                        fontSize: '0.85rem', fontWeight: 700,
+                        cursor: resetting || resetConfirmText.trim() !== org.name ? 'not-allowed' : 'pointer',
+                        opacity: resetting || resetConfirmText.trim() !== org.name ? 0.55 : 1,
+                        display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+                      }}>
+                      {resetting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      {resetting ? 'Resetting...' : 'Confirm reset'}
+                    </button>
+                    <button onClick={() => { setResetConfirmOpen(false); setResetConfirmText(''); }}
+                      style={{
+                        padding: '0.6rem 1.1rem', background: 'transparent',
+                        border: '1px solid var(--surface-border)', borderRadius: 8,
+                        color: '#a1a1aa', fontSize: '0.85rem', cursor: 'pointer',
+                      }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {resetFlash && (
+                <div style={{
+                  marginTop: '1rem', padding: '0.6rem 0.8rem',
+                  background: 'rgba(52,211,153,0.08)',
+                  border: '1px solid rgba(52,211,153,0.3)',
+                  borderRadius: 6, fontSize: '0.82rem', color: '#86efac',
+                }}>
+                  {resetFlash}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

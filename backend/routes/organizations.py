@@ -91,6 +91,53 @@ async def update_org_settings(
     return updated.data[0]
 
 
+@router.post("/reset-vulnerabilities")
+async def reset_vulnerabilities(
+    ctx: dict = Depends(require_owner),
+    supabase: Client = Depends(get_supabase),
+):
+    """Owner-only org-scoped reset used to wipe a tenant back to its
+    empty-state for re-demos without touching the shared CVE pool.
+
+    The `vulnerabilities` table is global (one row per CVE across every
+    tenant), so we intentionally don't delete from it — that would wipe
+    every other tenant's view too. Instead we clear the org-level state
+    that the read-path uses to decide what this org can see:
+
+      - scanned_oems          → empty        (vuln feed filter source)
+      - last_scan_at          → NULL         (first-scan empty state flag)
+      - manual_scan_requested_at → NULL      (drop any pending cron trigger)
+      - tasks                 → deleted      (pointed at now-invisible vulns)
+
+    Subscription, enabled_oems, alert config, members, and invitations are
+    all preserved — the caller stays logged in with full access.
+    """
+    org_id = ctx["organization_id"]
+
+    try:
+        tasks_del = supabase.table("tasks").delete().eq(
+            "organization_id", org_id
+        ).execute()
+        tasks_removed = len(tasks_del.data or [])
+    except Exception:
+        tasks_removed = 0
+
+    supabase.table("organizations").update({
+        "scanned_oems": None,
+        "last_scan_at": None,
+        "manual_scan_requested_at": None,
+    }).eq("id", org_id).execute()
+
+    return {
+        "status": "reset",
+        "tasks_removed": tasks_removed,
+        "message": (
+            "Your organization has been reset. Run a scan to repopulate the "
+            "vulnerabilities feed."
+        ),
+    }
+
+
 @router.post("/alerts/test")
 async def test_alerts(
     ctx: dict = Depends(require_owner),
