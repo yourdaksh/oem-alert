@@ -33,9 +33,16 @@ async def get_my_organization(
 VALID_INTERVALS = {1, 3, 6, 12, 24, 48, 168}
 
 
+VALID_ALERT_SEVERITIES = {"Critical", "High", "Medium", "Low"}
+
+
 class OrgSettingsUpdate(BaseModel):
     scan_interval_hours: int | None = None
     enabled_oems: str | None = None
+    alert_email: str | None = None
+    slack_webhook_url: str | None = None
+    alerts_enabled: bool | None = None
+    alert_min_severity: str | None = None
 
 
 @router.patch("/settings")
@@ -58,6 +65,20 @@ async def update_org_settings(
         patch["scan_interval_hours"] = req.scan_interval_hours
     if req.enabled_oems is not None:
         patch["enabled_oems"] = req.enabled_oems
+    if req.alert_email is not None:
+        patch["alert_email"] = req.alert_email.strip() or None
+    if req.slack_webhook_url is not None:
+        url = (req.slack_webhook_url or "").strip() or None
+        if url and not url.startswith("https://hooks.slack.com/"):
+            raise HTTPException(status_code=400, detail="slack_webhook_url must start with https://hooks.slack.com/")
+        patch["slack_webhook_url"] = url
+    if req.alerts_enabled is not None:
+        patch["alerts_enabled"] = bool(req.alerts_enabled)
+    if req.alert_min_severity is not None:
+        sev = req.alert_min_severity.capitalize()
+        if sev not in VALID_ALERT_SEVERITIES:
+            raise HTTPException(status_code=400, detail=f"alert_min_severity must be one of {sorted(VALID_ALERT_SEVERITIES)}")
+        patch["alert_min_severity"] = sev
     if not patch:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -68,6 +89,41 @@ async def update_org_settings(
         "id", ctx["organization_id"]
     ).execute()
     return updated.data[0]
+
+
+@router.post("/alerts/test")
+async def test_alerts(
+    ctx: dict = Depends(require_owner),
+    supabase: Client = Depends(get_supabase),
+):
+    """Send a sample digest with the org's current config so Owners can verify
+    email/slack work before relying on real CVE alerts."""
+    from utils.alerts import Org, _parse_oems, send_email, send_slack
+    r = supabase.table("organizations").select(
+        "id, name, enabled_oems, alert_email, slack_webhook_url, alerts_enabled, alert_min_severity"
+    ).eq("id", ctx["organization_id"]).execute()
+    if not r.data:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    o = r.data[0]
+    org = Org(
+        id=o["id"],
+        name=o.get("name") or "Your Organization",
+        enabled_oems=_parse_oems(o.get("enabled_oems")),
+        alert_email=o.get("alert_email"),
+        slack_webhook_url=o.get("slack_webhook_url"),
+        alerts_enabled=bool(o.get("alerts_enabled", True)),
+        alert_min_severity=o.get("alert_min_severity") or "High",
+    )
+    sample = [{
+        "unique_id": "CVE-SAMPLE-0001",
+        "oem_name": "Example",
+        "severity_level": org.alert_min_severity,
+        "vulnerability_description": "This is a sample alert confirming your OEM Alert email/Slack wiring is live.",
+        "source_url": "https://example.com",
+    }]
+    email_ok = send_email(org, sample) if org.alert_email else None
+    slack_ok = send_slack(org, sample) if org.slack_webhook_url else None
+    return {"email": email_ok, "slack": slack_ok}
 
 
 @router.get("/members")

@@ -182,12 +182,12 @@ export default function TeamPage() {
         </div>
         <div>
           {members.map(m => (
-            <div key={m.id} style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--surface-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 500 }}>{m.full_name || m.email}</div>
-                <div style={{ fontSize: '0.8rem', color: '#71717a' }}>{m.email}</div>
+            <div key={m.id} className="team-row" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--surface-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0, flex: '1 1 160px' }}>
+                <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name || m.email}</div>
+                <div style={{ fontSize: '0.8rem', color: '#71717a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.email}</div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
                 {isOwner && m.role !== 'Owner' ? (
                   <select value={m.role} onChange={e => changeRole(m.id, e.target.value)}
                     style={{ padding: '0.35rem 0.6rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'white', fontSize: '0.85rem' }}>

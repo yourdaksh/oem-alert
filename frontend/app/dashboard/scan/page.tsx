@@ -1,119 +1,19 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Zap, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
-import { getSupabase, API_URL } from '../../../lib/supabase';
-
-type OemEntry = { id: string; name: string; description: string; enabled: boolean };
-type ScanLog = {
-  oem_name: string; scan_type: string; status: string;
-  vulnerabilities_found: number; new_vulnerabilities: number;
-  error_message: string | null; scan_date: string;
-};
-type RunResult = { oem: string; status: 'running' | 'ok' | 'error'; found?: number; new?: number; error?: string };
+import { useMemo } from 'react';
+import { Loader2, Zap, CheckCircle2, XCircle } from 'lucide-react';
+import { useScan } from '../ScanContext';
 
 export default function ScanPage() {
-  const [oems, setOems] = useState<OemEntry[]>([]);
-  const [logs, setLogs] = useState<ScanLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [running, setRunning] = useState<Record<string, RunResult>>({});
-  const [runningAll, setRunningAll] = useState(false);
-  const [role, setRole] = useState<string>('');
+  const {
+    loading, error, oems, running, runningAll, summary, lastByOem,
+    scanOne, scanAll, isOwner, startedAt,
+  } = useScan();
 
-  async function authHeaders(): Promise<Record<string, string>> {
-    const { data } = await getSupabase().auth.getSession();
-    return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {};
+  const enabledCount = useMemo(() => oems.filter(o => o.enabled).length, [oems]);
+
+  if (loading) {
+    return <div style={{ padding: '2rem' }}><Loader2 className="animate-spin" size={20} /></div>;
   }
-
-  async function load() {
-    setError(null);
-    try {
-      const headers = await authHeaders();
-      const [oemsRes, logsRes, membersRes] = await Promise.all([
-        fetch(`${API_URL}/scrapers/oems`, { headers }),
-        fetch(`${API_URL}/scrapers/status?limit=40`, { headers }),
-        fetch(`${API_URL}/organizations/members`, { headers }),
-      ]);
-      if (!oemsRes.ok) throw new Error((await oemsRes.json()).detail || 'Not allowed');
-      setOems(await oemsRes.json());
-      if (logsRes.ok) setLogs(await logsRes.json());
-      if (membersRes.ok) {
-        const m = await membersRes.json();
-        const { data: u } = await getSupabase().auth.getUser();
-        setRole(m.find((x: any) => x.id === u.user?.id)?.role || '');
-      }
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, []);
-
-  async function scanOne(oemId: string) {
-    setRunning(p => ({ ...p, [oemId]: { oem: oemId, status: 'running' } }));
-    // 90s cap so a hung scraper can't leave the UI in "Scanning..." forever.
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90_000);
-    try {
-      const headers = { ...(await authHeaders()), 'Content-Type': 'application/json' };
-      const res = await fetch(`${API_URL}/scrapers/run-one/${oemId}`, {
-        method: 'POST', headers, signal: controller.signal,
-      });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload.detail || `Scrape failed (${res.status})`);
-      setRunning(p => ({ ...p, [oemId]: { oem: oemId, status: 'ok', found: payload.found, new: payload.new } }));
-      await load(); // refresh scan_logs
-    } catch (e: any) {
-      const msg = e.name === 'AbortError' ? 'Timed out after 90s' : e.message;
-      setRunning(p => ({ ...p, [oemId]: { oem: oemId, status: 'error', error: msg } }));
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  async function scanAll() {
-    if (!confirm('Run every scraper sequentially? Takes ~1-2 minutes.')) return;
-    setRunningAll(true);
-    setRunning({});
-    for (const o of oems.filter(x => x.enabled)) {
-      await scanOne(o.id);
-    }
-    setRunningAll(false);
-  }
-
-  const lastByOem = useMemo(() => {
-    const m: Record<string, ScanLog> = {};
-    for (const l of logs) {
-      const k = l.oem_name.toLowerCase();
-      if (!m[k]) m[k] = l;
-    }
-    return m;
-  }, [logs]);
-
-  const summary = useMemo(() => {
-    const totals = Object.values(running).reduce(
-      (acc, r) => {
-        if (r.status === 'ok') {
-          acc.found += r.found || 0;
-          acc.new += r.new || 0;
-          acc.ok += 1;
-        } else if (r.status === 'error') {
-          acc.failed += 1;
-        } else if (r.status === 'running') {
-          acc.running += 1;
-        }
-        return acc;
-      },
-      { ok: 0, failed: 0, running: 0, found: 0, new: 0 }
-    );
-    return totals;
-  }, [running]);
-
-  const isOwner = role === 'Owner' || role === 'Admin';
-
-  if (loading) return <div style={{ padding: '2rem' }}><Loader2 className="animate-spin" size={20} /></div>;
 
   if (!isOwner) {
     return (
@@ -126,12 +26,28 @@ export default function ScanPage() {
     );
   }
 
+  async function handleScanAll() {
+    if (runningAll) return;
+    if (!confirm(
+      `Run every scraper now?\n\n` +
+      `${enabledCount} OEMs will run ${6} at a time. Typical full scan finishes ` +
+      `in ~3-5 minutes. You can keep using the rest of the app — progress stays ` +
+      `in the banner at the top.`
+    )) return;
+    await scanAll();
+  }
+
+  const inFlight = summary.ok + summary.failed + summary.running;
+  const progressPct = runningAll && enabledCount
+    ? Math.round(((summary.ok + summary.failed) / enabledCount) * 100)
+    : 0;
+
   return (
     <div className="animate-fade-in-up">
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '2rem', marginBottom: '0.35rem' }}>Manual Scan</h1>
         <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
-          Run scrapers on demand. Automatic scans happen every {/* interval */} on your Settings schedule.
+          Run scrapers on demand. Scans continue in the background — you can switch pages freely.
         </p>
       </div>
 
@@ -144,21 +60,42 @@ export default function ScanPage() {
       {/* Full scan hero */}
       <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <h2 style={{ fontSize: '1.1rem', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
               <Zap size={16} color="var(--primary)" /> Scan all OEMs
             </h2>
             <p style={{ color: '#a1a1aa', fontSize: '0.85rem', margin: 0 }}>
-              Runs every enabled scraper in sequence. Expect 1-2 minutes.
+              Runs every enabled scraper in parallel batches. Typically 3-5 minutes.
             </p>
           </div>
-          <button onClick={scanAll} disabled={runningAll} className="btn btn-primary"
+          <button onClick={handleScanAll} disabled={runningAll} className="btn btn-primary"
             style={{ padding: '0.65rem 1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {runningAll ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-            {runningAll ? 'Running full scan...' : 'Run full scan'}
+            {runningAll ? 'Scanning...' : 'Run full scan'}
           </button>
         </div>
-        {(summary.ok || summary.failed || summary.running) > 0 && (
+
+        {runningAll && (
+          <div style={{ marginTop: '0.85rem' }}>
+            <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{
+                width: `${progressPct}%`, height: '100%',
+                background: 'linear-gradient(90deg, var(--primary), #a7f3d0)',
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
+            <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: '#a1a1aa', display: 'flex', justifyContent: 'space-between' }}>
+              <span>{summary.ok + summary.failed}/{enabledCount} complete ({progressPct}%)</span>
+              <span>
+                {startedAt && (
+                  <>elapsed {Math.round((Date.now() - startedAt) / 1000)}s</>
+                )}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {inFlight > 0 && (
           <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', background: 'var(--surface)', borderRadius: 6, fontSize: '0.8rem', color: '#a1a1aa' }}>
             {summary.running > 0 && <span style={{ color: 'var(--warning)' }}>{summary.running} running · </span>}
             <span style={{ color: 'var(--accent)' }}>{summary.ok} succeeded</span>
@@ -179,7 +116,7 @@ export default function ScanPage() {
             const last = lastByOem[o.id];
             return (
               <div key={o.id} className="scan-row" style={{ padding: '0.85rem 1.5rem', borderBottom: '1px solid var(--surface-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.15rem' }}>
                     <span style={{ fontWeight: 500 }}>{o.name}</span>
                     {!o.enabled && (
@@ -194,7 +131,7 @@ export default function ScanPage() {
                     )}
                     {state?.status === 'error' && (
                       <span style={{ color: '#fca5a5', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <XCircle size={12} /> {state.error?.slice(0, 80)}
+                        <XCircle size={12} /> {state.error?.slice(0, 120)}
                       </span>
                     )}
                     {state?.status === 'running' && (
@@ -213,8 +150,8 @@ export default function ScanPage() {
                   </div>
                 </div>
                 <button onClick={() => scanOne(o.id)} disabled={!o.enabled || state?.status === 'running' || runningAll}
-                  style={{ padding: '0.4rem 0.9rem', background: 'var(--surface-hover)', border: '1px solid var(--surface-border)', borderRadius: 6, color: 'white', fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  {state?.status === 'running' ? 'Scanning...' : `Scan ${o.name}`}
+                  style={{ padding: '0.4rem 0.9rem', background: 'var(--surface-hover)', border: '1px solid var(--surface-border)', borderRadius: 6, color: 'white', fontSize: '0.82rem', cursor: (!o.enabled || state?.status === 'running' || runningAll) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: (!o.enabled || runningAll) ? 0.55 : 1 }}>
+                  {state?.status === 'running' ? 'Scanning...' : 'Scan'}
                 </button>
               </div>
             );

@@ -92,7 +92,7 @@ class BaseScraper(ABC):
                 html = self.driver.page_source
                 return BeautifulSoup(html, 'html.parser')
             else:
-                response = self.session.get(url, timeout=15)
+                response = self.session.get(url, timeout=30)
                 try:
                     response.raise_for_status()
                 except requests.HTTPError as http_err:
@@ -245,7 +245,7 @@ class RSSScraper(BaseScraper):
         try:
             response = self.session.get(rss_url, timeout=30)
             response.raise_for_status()
-            
+
             soup = BeautifulSoup(response.content, 'xml')
             items = soup.find_all('item')
             
