@@ -95,12 +95,20 @@ def main() -> int:
         }).in_("id", due).execute()
         return 1
 
+    scrape_started = datetime.now(timezone.utc) - timedelta(minutes=10)  # small safety margin
     now_iso = datetime.now(timezone.utc).isoformat()
     sb.table("organizations").update({
         "last_scan_at": now_iso,
         "manual_scan_requested_at": None,
     }).in_("id", due).execute()
     logger.info("stamped last_scan_at for %d orgs", len(due))
+
+    try:
+        from utils.alerts import notify_orgs_of_new_vulns
+        result = notify_orgs_of_new_vulns(sb, since=scrape_started)
+        logger.info("alert fan-out: %s", result)
+    except Exception:
+        logger.exception("alert fan-out failed (non-fatal)")
     return 0
 
 

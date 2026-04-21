@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Save, Clock, CheckCircle } from 'lucide-react';
+import { Loader2, RefreshCw, Save, Clock, CheckCircle, Mail, Send, MessageSquare } from 'lucide-react';
 import { getSupabase, API_URL } from '../../../lib/supabase';
 
 type Org = {
@@ -12,6 +12,10 @@ type Org = {
   scan_interval_hours: number | null;
   last_scan_at: string | null;
   created_at: string;
+  alert_email: string | null;
+  slack_webhook_url: string | null;
+  alerts_enabled: boolean;
+  alert_min_severity: string;
 };
 
 const INTERVAL_OPTIONS = [
@@ -33,6 +37,13 @@ export default function SettingsPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<string>('');
+  const [alertEmail, setAlertEmail] = useState<string>('');
+  const [slackUrl, setSlackUrl] = useState<string>('');
+  const [alertsEnabled, setAlertsEnabled] = useState<boolean>(true);
+  const [minSeverity, setMinSeverity] = useState<string>('High');
+  const [savingAlerts, setSavingAlerts] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [alertFlash, setAlertFlash] = useState<string | null>(null);
 
   async function authHeader(): Promise<Record<string, string>> {
     const { data } = await getSupabase().auth.getSession();
@@ -51,6 +62,10 @@ export default function SettingsPage() {
       const o: Org = await orgRes.json();
       setOrg(o);
       setInterval(o.scan_interval_hours || 6);
+      setAlertEmail(o.alert_email || '');
+      setSlackUrl(o.slack_webhook_url || '');
+      setAlertsEnabled(o.alerts_enabled ?? true);
+      setMinSeverity(o.alert_min_severity || 'High');
       if (membersRes.ok) {
         const { data: user } = await getSupabase().auth.getUser();
         const me = (await membersRes.json()).find((m: any) => m.id === user.user?.id);
@@ -82,6 +97,55 @@ export default function SettingsPage() {
       setError(e.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveAlerts() {
+    setSavingAlerts(true);
+    setError(null);
+    try {
+      const headers = { ...(await authHeader()), 'Content-Type': 'application/json' };
+      const res = await fetch(`${API_URL}/organizations/settings`, {
+        method: 'PATCH', headers,
+        body: JSON.stringify({
+          alert_email: alertEmail.trim(),
+          slack_webhook_url: slackUrl.trim(),
+          alerts_enabled: alertsEnabled,
+          alert_min_severity: minSeverity,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Failed to save');
+      setOrg(await res.json());
+      setAlertFlash('Saved');
+      setTimeout(() => setAlertFlash(null), 1800);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSavingAlerts(false);
+    }
+  }
+
+  async function testAlerts() {
+    setTesting(true);
+    setAlertFlash(null);
+    setError(null);
+    try {
+      const headers = await authHeader();
+      const res = await fetch(`${API_URL}/organizations/alerts/test`, { method: 'POST', headers });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.detail || 'Test failed');
+      const parts: string[] = [];
+      if (payload.email === true) parts.push('email sent');
+      else if (payload.email === false) parts.push('email failed (check SMTP env on Render)');
+      if (payload.slack === true) parts.push('slack sent');
+      else if (payload.slack === false) parts.push('slack failed (check webhook URL)');
+      if (parts.length === 0) parts.push('No destination configured — add email or Slack URL first');
+      setAlertFlash(parts.join(' · '));
+      setTimeout(() => setAlertFlash(null), 5000);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -121,6 +185,60 @@ export default function SettingsPage() {
 
       {org && (
         <div style={{ display: 'grid', gap: '1.5rem' }}>
+          {/* Alerts card — placed first so Owners see it immediately */}
+          <div id="alerts" className="glass-card" style={{ padding: '1.5rem', scrollMarginTop: '80px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Mail size={18} />
+                <h2 style={{ fontSize: '1.1rem', margin: 0 }}>Alerts</h2>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#a1a1aa', cursor: isOwner ? 'pointer' : 'default' }}>
+                <input type="checkbox" checked={alertsEnabled} disabled={!isOwner}
+                  onChange={e => setAlertsEnabled(e.target.checked)} />
+                Enabled
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.85rem', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#a1a1aa', display: 'block', marginBottom: '0.3rem' }}>Alert email</label>
+                <input type="email" value={alertEmail} disabled={!isOwner}
+                  onChange={e => setAlertEmail(e.target.value)} placeholder="security@yourcompany.com"
+                  style={{ width: '100%', padding: '0.55rem 0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--surface-border)', borderRadius: 8, color: 'white', fontSize: '0.9rem' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#a1a1aa', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
+                  <MessageSquare size={12} /> Slack webhook URL
+                </label>
+                <input type="url" value={slackUrl} disabled={!isOwner}
+                  onChange={e => setSlackUrl(e.target.value)} placeholder="https://hooks.slack.com/services/..."
+                  style={{ width: '100%', padding: '0.55rem 0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--surface-border)', borderRadius: 8, color: 'white', fontSize: '0.9rem' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#a1a1aa', display: 'block', marginBottom: '0.3rem' }}>Minimum severity</label>
+                <select value={minSeverity} disabled={!isOwner} onChange={e => setMinSeverity(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem 0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--surface-border)', borderRadius: 8, color: 'white', fontSize: '0.9rem' }}>
+                  {['Critical', 'High', 'Medium', 'Low'].map(s => <option key={s} value={s}>{s}+</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={saveAlerts} disabled={!isOwner || savingAlerts} className="btn btn-primary"
+                style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {savingAlerts ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
+              </button>
+              <button onClick={testAlerts} disabled={!isOwner || testing}
+                style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--surface-hover)', border: '1px solid var(--surface-border)', borderRadius: 6, color: 'white', fontSize: '0.85rem', cursor: 'pointer' }}>
+                {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send test
+              </button>
+              {alertFlash && <span style={{ color: '#86efac', fontSize: '0.82rem' }}>{alertFlash}</span>}
+            </div>
+            <p style={{ fontSize: '0.75rem', color: '#71717a', marginTop: '0.75rem', margin: '0.75rem 0 0 0' }}>
+              Digest emails/Slack messages fire automatically after each scheduled scan if new vulnerabilities at this severity or above were found.
+            </p>
+          </div>
+
           {/* Scan schedule card (Owner-only controls) */}
           <div className="glass-card" style={{ padding: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>

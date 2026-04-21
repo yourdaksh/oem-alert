@@ -4,9 +4,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Shield, LayoutDashboard, AlertTriangle, CheckSquare,
-  Users, Settings, LogOut, Search, Bell, Loader2, Zap, Menu, X,
+  Users, Settings, LogOut, Search, Loader2, Zap, Menu, X,
 } from 'lucide-react';
 import { getSupabase, API_URL } from '../../lib/supabase';
+import { ScanProvider } from './ScanContext';
+import ScanBanner from './ScanBanner';
+import NotificationBell from './NotificationBell';
 
 type OrgInfo = { name: string; subscription_status: string | null };
 type Profile = { email: string; role: string; organization: OrgInfo | null };
@@ -147,6 +150,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
+    <ScanProvider>
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
       {sidebar}
 
@@ -185,17 +189,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ position: 'relative', cursor: 'pointer' }}>
-              <Bell size={20} color="#a1a1aa" />
-              <div style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, background: 'var(--danger)', borderRadius: '50%' }}></div>
-            </div>
+            <NotificationBell />
           </div>
         </header>
 
         <div style={{ padding: isMobile ? '1.25rem 1rem' : '2rem', flexGrow: 1 }}>
+          <ScanBanner />
           {children}
         </div>
       </main>
     </div>
+    </ScanProvider>
   );
 }
