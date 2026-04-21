@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, Eye, ShieldCheck, ChevronRight, Download, Loader2 } from 'lucide-react';
+import { Activity, AlertTriangle, Eye, ShieldCheck, ChevronRight, Download, Loader2, Zap, Sparkles } from 'lucide-react';
 import { getSupabase, API_URL } from '../../lib/supabase';
 import { stripHtml } from '../../lib/html';
 
@@ -46,6 +46,8 @@ export default function DashboardIndex() {
   const [selfId, setSelfId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [hasScanned, setHasScanned] = useState<boolean | null>(null);
+  const [orgName, setOrgName] = useState<string>('');
 
   useEffect(() => {
     (async () => {
@@ -54,14 +56,22 @@ export default function DashboardIndex() {
         const token = data.session?.access_token;
         if (!token) return;
         const headers = { Authorization: `Bearer ${token}` };
-        const [vRes, tRes, uRes] = await Promise.all([
+        const [vRes, tRes, uRes, oRes] = await Promise.all([
           fetch(`${API_URL}/vulnerabilities/?limit=2500`, { headers }),
           fetch(`${API_URL}/tasks/`, { headers }),
           getSupabase().auth.getUser(),
+          fetch(`${API_URL}/organizations/me`, { headers }),
         ]);
         if (vRes.ok) setVulns(await vRes.json());
         if (tRes.ok) setTasks(await tRes.json());
         setSelfId(uRes.data.user?.id || '');
+        if (oRes.ok) {
+          const org = await oRes.json();
+          setHasScanned(!!org.last_scan_at);
+          setOrgName(org.name || '');
+        } else {
+          setHasScanned(false);
+        }
       } finally {
         setLoading(false);
       }
@@ -98,6 +108,41 @@ export default function DashboardIndex() {
   function handleExport() {
     setExporting(true);
     try { exportVulnsCsv(vulns); } finally { setTimeout(() => setExporting(false), 500); }
+  }
+
+  // First-run experience: org has no completed scans yet. Surface a welcome
+  // card with a single clear CTA so the owner knows what to do next, instead
+  // of staring at a dashboard full of zeros.
+  if (!loading && hasScanned === false) {
+    return (
+      <div className="animate-fade-in-up">
+        <div style={{ marginBottom: '2rem' }}>
+          <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+            Welcome{orgName ? `, ${orgName}` : ''}
+          </h1>
+          <p style={{ color: '#a1a1aa' }}>Your organization is ready. Run your first scan to start tracking vulnerabilities.</p>
+        </div>
+
+        <div className="glass-card" style={{ padding: '2.5rem', textAlign: 'center', maxWidth: 640, margin: '0 auto' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--primary-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
+            <Sparkles size={28} color="var(--primary)" />
+          </div>
+          <h2 style={{ fontSize: '1.4rem', marginBottom: '0.5rem' }}>Let&apos;s run your first scan</h2>
+          <p style={{ color: '#a1a1aa', fontSize: '0.95rem', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+            We&apos;ll pull the latest advisories from every vendor you subscribed to.
+            Takes about <strong>3&ndash;5 minutes</strong>. You can keep using the app
+            while it runs &mdash; progress follows you across pages.
+          </p>
+          <Link href="/dashboard/scan" className="btn btn-primary"
+            style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Zap size={18} /> Run first scan
+          </Link>
+          <div style={{ marginTop: '1.75rem', fontSize: '0.8rem', color: '#71717a' }}>
+            Want automatic scanning? <Link href="/dashboard/settings" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Configure a schedule →</Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

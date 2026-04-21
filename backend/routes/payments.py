@@ -16,13 +16,57 @@ class OnboardingRequest(BaseModel):
     selectedOems: list[str]
 
 @router.post("/onboarding-checkout")
-async def create_onboarding_checkout(request: OnboardingRequest):
-    """Create a guest checkout session strictly from the Next.js Onboarding wizard."""
+async def create_onboarding_checkout(
+    request: OnboardingRequest,
+    supabase: Client = Depends(get_supabase),
+):
+    """Create a guest checkout session strictly from the Next.js Onboarding wizard.
+
+    Before charging, reject the request if this email is already linked to an
+    active organization — the caller should finish signing up with the existing
+    paid org instead of paying again. This is the main defense against
+    double-charging users who paid but abandoned the setup step.
+    """
     if not stripe.api_key:
         raise HTTPException(status_code=500, detail="Stripe API key not configured in .env")
-        
+
+    if supabase:
+        try:
+            # If a user record already exists for this email, redirect them to sign-in
+            existing_user = supabase.table("users").select(
+                "id, organization_id"
+            ).eq("email", request.email).execute()
+            if existing_user.data:
+                raise HTTPException(
+                    status_code=409,
+                    detail="An account with this email already exists. Please sign in instead.",
+                )
+            # If an active paid org exists with this name, the user paid already —
+            # they just never completed setup. Route them back through /login to
+            # finish the setup step with their existing session_id, not a new one.
+            existing_org = supabase.table("organizations").select(
+                "id, name, subscription_status"
+            ).eq("name", request.organizationName).eq(
+                "subscription_status", "active"
+            ).execute()
+            if existing_org.data:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This organization has already been paid for. Check the "
+                        "email used at checkout for your setup link, or contact "
+                        "support if you need it resent."
+                    ),
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # Don't block checkout on an unrelated DB hiccup — the setup step
+            # still verifies the Stripe session before provisioning anything.
+            pass
+
     frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-    
+
     temp_org_id = str(uuid.uuid4())
     
     try:
@@ -53,6 +97,32 @@ async def create_onboarding_checkout(request: OnboardingRequest):
         return {"checkout_url": session.url}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/session-status/{session_id}")
+async def get_session_status(session_id: str):
+    """Read-only probe used by the onboarding page to recover abandoned setups.
+
+    If the browser has a persisted session_id from a prior successful payment,
+    we check Stripe here to decide whether to nudge the user back to /login to
+    finish setup — versus charging them again.
+    """
+    if not stripe.api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Session not found: {e}")
+
+    raw_metadata = getattr(session, "metadata", None)
+    metadata = raw_metadata.to_dict() if raw_metadata is not None and hasattr(raw_metadata, "to_dict") else (dict(raw_metadata) if raw_metadata else {})
+
+    return {
+        "id": session.id,
+        "payment_status": getattr(session, "payment_status", None),  # "paid" | "unpaid" | "no_payment_required"
+        "customer_email": getattr(session, "customer_email", None),
+        "organization_name": metadata.get("organization_name"),
+    }
 
 
 @router.post("/create-checkout-session")

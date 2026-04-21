@@ -9,18 +9,26 @@ from backend.models_pydantic import VulnerabilityOut
 router = APIRouter(prefix="/vulnerabilities", tags=["Vulnerabilities"])
 
 
-def _enabled_oems_for(org_id: str, supabase: Client) -> list[str]:
-    """Return the list of OEMs the org has subscribed to.
+def _org_scope(org_id: str, supabase: Client) -> tuple[list[str], bool]:
+    """Return (enabled_oems, has_scanned).
 
-    Scraped rows live in a shared pool (organization_id NULL). We filter at
-    read time so each tenant only sees the vendors they paid to monitor.
-    Empty/"ALL" means unrestricted.
+    Scraped rows live in a shared pool; we filter at read time so each tenant
+    only sees the vendors they subscribed to. On top of that, a freshly-created
+    org with no completed scans gets an empty view — showing them the pre-existing
+    shared-pool rows would be misleading ("did I scan these?"). They see their
+    data only after they've run their first scan.
+    Empty/"ALL" enabled_oems means unrestricted once scanning has happened.
     """
-    org = supabase.table("organizations").select("enabled_oems").eq("id", org_id).execute()
-    raw = (org.data[0].get("enabled_oems") if org.data else "") or ""
-    if not raw or raw.strip().upper() == "ALL":
-        return []
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    org = supabase.table("organizations").select("enabled_oems, last_scan_at").eq(
+        "id", org_id
+    ).execute()
+    if not org.data:
+        return [], False
+    row = org.data[0]
+    raw = (row.get("enabled_oems") or "").strip()
+    oems = [] if not raw or raw.upper() == "ALL" else [o.strip() for o in raw.split(",") if o.strip()]
+    has_scanned = bool(row.get("last_scan_at"))
+    return oems, has_scanned
 
 
 @router.get("/", response_model=List[VulnerabilityOut])
@@ -34,7 +42,11 @@ async def get_vulnerabilities(
     if not supabase:
         raise HTTPException(status_code=500, detail="Database connection missing")
 
-    org_oems = _enabled_oems_for(ctx["organization_id"], supabase)
+    org_oems, has_scanned = _org_scope(ctx["organization_id"], supabase)
+    # Brand-new orgs start empty until they've completed their first scan,
+    # otherwise they'd see the full shared pool and think their scan ran magically.
+    if not has_scanned:
+        return []
 
     query = supabase.table("vulnerabilities").select("*")
     if org_oems:
@@ -61,7 +73,9 @@ async def get_vulnerability(
         raise HTTPException(status_code=404, detail="Vulnerability not found")
 
     vuln = res.data[0]
-    org_oems = _enabled_oems_for(ctx["organization_id"], supabase)
+    org_oems, has_scanned = _org_scope(ctx["organization_id"], supabase)
+    if not has_scanned:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
     if org_oems and vuln.get("oem_name") not in org_oems:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
     return vuln

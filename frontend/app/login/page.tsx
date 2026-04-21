@@ -1,15 +1,48 @@
 'use client';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import { ShieldAlert, Mail, Lock, ArrowRight, CheckCircle, Eye, EyeOff, Building } from 'lucide-react';
 import { getSupabase, API_URL } from '../../lib/supabase';
+
+const PENDING_KEY = 'oem-alert.pending_checkout';
 
 function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const isOnboarded = searchParams.get('onboarded') === 'true';
-  const sessionId = searchParams.get('session_id') || '';
+  const urlSessionId = searchParams.get('session_id') || '';
+  const isOnboarded = searchParams.get('onboarded') === 'true' || !!urlSessionId;
+
+  // Recover an abandoned setup — if the URL doesn't carry a session_id but
+  // localStorage does, treat this load like a fresh post-payment return.
+  const [resolvedSessionId, setResolvedSessionId] = useState(urlSessionId);
+  const sessionId = resolvedSessionId;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (urlSessionId) {
+      // Stash the successful-payment context so a tab close doesn't lose it.
+      try {
+        window.localStorage.setItem(PENDING_KEY, JSON.stringify({
+          session_id: urlSessionId,
+          paidAt: Date.now(),
+        }));
+      } catch { /* localStorage may be disabled; not fatal */ }
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(PENDING_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { session_id?: string; paidAt?: number };
+      // Auto-expire recovered sessions after 24h — Stripe Checkout sessions
+      // are good for 24 hours anyway.
+      if (parsed?.paidAt && Date.now() - parsed.paidAt > 24 * 60 * 60 * 1000) {
+        window.localStorage.removeItem(PENDING_KEY);
+        return;
+      }
+      if (parsed?.session_id) setResolvedSessionId(parsed.session_id);
+    } catch { /* corrupted value; ignore */ }
+  }, [urlSessionId]);
 
   const [mode, setMode] = useState<'login' | 'setup'>(isOnboarded ? 'setup' : 'login');
   const [showPassword, setShowPassword] = useState(false);
@@ -47,6 +80,11 @@ function LoginContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Setup failed');
 
+      // Setup completed — burn the one-shot session_id so a later reload
+      // doesn't try to re-provision the same payment.
+      if (typeof window !== 'undefined') {
+        try { window.localStorage.removeItem(PENDING_KEY); } catch {}
+      }
       setSetupDone(true);
     } catch (err: any) {
       alert(err.message);
