@@ -145,7 +145,7 @@ async def test_alerts(
 ):
     """Send a sample digest with the org's current config so Owners can verify
     email/slack work before relying on real CVE alerts."""
-    from utils.alerts import Org, _parse_oems, send_email, send_slack
+    from utils.alerts import Org, _parse_oems, send_email, send_slack_detailed
     r = supabase.table("organizations").select(
         "id, name, enabled_oems, alert_email, slack_webhook_url, alerts_enabled, alert_min_severity"
     ).eq("id", ctx["organization_id"]).execute()
@@ -169,8 +169,15 @@ async def test_alerts(
         "source_url": "https://example.com",
     }]
     email_ok = send_email(org, sample) if org.alert_email else None
-    slack_ok = send_slack(org, sample) if org.slack_webhook_url else None
-    return {"email": email_ok, "slack": slack_ok}
+    slack_ok: bool | None = None
+    slack_error: str | None = None
+    if org.slack_webhook_url:
+        slack_ok, slack_error = send_slack_detailed(org, sample)
+    return {
+        "email": email_ok,
+        "slack": slack_ok,
+        "slack_error": slack_error,
+    }
 
 
 @router.get("/members")

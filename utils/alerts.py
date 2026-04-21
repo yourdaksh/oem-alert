@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import smtplib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -108,28 +109,115 @@ def send_email(org: Org, vulns: list[dict]) -> bool:
         return False
 
 
-def send_slack(org: Org, vulns: list[dict]) -> bool:
-    if not org.slack_webhook_url or not vulns:
-        return False
-    sev_emoji = {"Critical": ":rotating_light:", "High": ":warning:", "Medium": ":large_yellow_circle:", "Low": ":white_check_mark:"}
-    lines = [f"*{len(vulns)} new vulnerabilities* for `{org.name}` (threshold: *{org.alert_min_severity}*)"]
-    for v in vulns[:20]:  # cap so Slack doesn't reject the payload
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_MRKDWN_UNSAFE_RE = re.compile(r"[<>&]")
+_MRKDWN_ESCAPES = {"<": "&lt;", ">": "&gt;", "&": "&amp;"}
+
+
+def _slack_escape(raw: str) -> str:
+    """Prep a string for Slack's mrkdwn `text` field.
+
+    Slack treats ``<`` as the start of a link token (``<url|display>``) and
+    returns a 400 if it can't match one, which is the most common reason a
+    webhook that worked for the canned Send-test payload fails on real CVE
+    descriptions (vendors embed raw HTML: ``<p>``, ``<br>``, etc.). Strip
+    HTML tags first, then escape the three mrkdwn-special characters that
+    remain. Also collapse whitespace so newlines in source don't break lines.
+    """
+    if not raw:
+        return ""
+    cleaned = _HTML_TAG_RE.sub(" ", raw)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return _MRKDWN_UNSAFE_RE.sub(lambda m: _MRKDWN_ESCAPES[m.group(0)], cleaned)
+
+
+def send_slack_detailed(org: Org, vulns: list[dict]) -> tuple[bool, str | None]:
+    """Post the digest to the Slack webhook and return (ok, error_message).
+
+    Slack's ``text``-payload cap is ~4000 characters; longer bodies 400 with
+    ``invalid_payload``. We cap at 10 rows with short descriptions (~120
+    chars) so the total message stays comfortably under the limit even with
+    emoji and URL escape sequences. Anything over 10 gets summarised as
+    ``… and N more`` so the digest still conveys volume.
+    """
+    if not org.slack_webhook_url:
+        return False, "no_webhook_configured"
+    if not vulns:
+        return False, "empty_digest"
+
+    sev_emoji = {
+        "Critical": ":rotating_light:",
+        "High": ":warning:",
+        "Medium": ":large_yellow_circle:",
+        "Low": ":white_check_mark:",
+    }
+
+    org_name = _slack_escape(org.name or "Your Organization")
+    threshold = _slack_escape(org.alert_min_severity or "High")
+    lines = [f"*{len(vulns)} vulnerability findings* for `{org_name}` (threshold: *{threshold}*)"]
+
+    MAX_ROWS = 10
+    DESC_LEN = 120
+    for v in vulns[:MAX_ROWS]:
         sev = (v.get("severity_level") or "Unknown").capitalize()
         emoji = sev_emoji.get(sev, ":grey_question:")
-        line = f"{emoji} *{sev}* — `{v.get('unique_id','')}` — {v.get('oem_name','')} — {(v.get('vulnerability_description') or '')[:140]}"
-        if v.get("source_url"):
-            line += f" <{v['source_url']}|source>"
+        cve = _slack_escape(v.get("unique_id") or "")
+        oem = _slack_escape(v.get("oem_name") or "")
+        desc = _slack_escape(v.get("vulnerability_description") or "")[:DESC_LEN]
+        line = f"{emoji} *{sev}* `{cve}` — {oem}"
+        if desc:
+            line += f" — {desc}"
+        # Only inline a source link if it parses as an https URL — stops
+        # vendor "javascript:" or relative junk from blowing up the payload.
+        src = v.get("source_url") or ""
+        if isinstance(src, str) and src.startswith(("http://", "https://")):
+            # Slack link syntax <url|label>; the URL itself must not contain
+            # unescaped |> characters.
+            safe_url = src.replace("|", "%7C").replace(">", "%3E")
+            line += f" <{safe_url}|source>"
         lines.append(line)
-    if len(vulns) > 20:
-        lines.append(f"_… and {len(vulns) - 20} more_")
+
+    if len(vulns) > MAX_ROWS:
+        lines.append(f"_… and {len(vulns) - MAX_ROWS} more_")
+
+    payload = {"text": "\n".join(lines)}
     try:
-        r = requests.post(org.slack_webhook_url, json={"text": "\n".join(lines)}, timeout=10)
-        r.raise_for_status()
-        logger.info("slack digest sent for %s (%d rows)", org.name, len(vulns))
-        return True
+        r = requests.post(org.slack_webhook_url, json=payload, timeout=10)
+    except requests.Timeout:
+        logger.error("slack send timed out for %s", org.name)
+        return False, "timeout_contacting_slack"
     except Exception as e:
-        logger.error("slack send failed for %s: %s", org.name, e)
-        return False
+        logger.error("slack send raised for %s: %s", org.name, e)
+        return False, f"network_error: {e}"[:180]
+
+    if 200 <= r.status_code < 300:
+        logger.info("slack digest sent for %s (%d rows)", org.name, len(vulns))
+        return True, None
+
+    body = (r.text or "")[:180]
+    logger.error("slack webhook %d for %s: %s", r.status_code, org.name, body)
+    # Slack returns specific body codes that are worth surfacing to the UI —
+    # they point the user straight at the real fix.
+    hint_map = {
+        "invalid_payload": "payload format rejected (length or special chars)",
+        "no_service": "webhook URL is inactive or revoked — regenerate it",
+        "channel_is_archived": "target Slack channel is archived",
+        "invalid_token": "webhook token is invalid",
+        "action_prohibited": "webhook is missing workspace permission",
+    }
+    hint = hint_map.get(body.strip(), None)
+    reason = f"http_{r.status_code}"
+    if hint:
+        reason += f": {hint}"
+    elif body:
+        reason += f": {body}"
+    return False, reason
+
+
+def send_slack(org: Org, vulns: list[dict]) -> bool:
+    """Back-compat wrapper — most callers only care about the boolean."""
+    ok, _ = send_slack_detailed(org, vulns)
+    return ok
 
 
 def _parse_oems(raw: str | None) -> list[str]:

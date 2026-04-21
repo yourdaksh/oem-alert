@@ -142,10 +142,15 @@ export default function SettingsPage() {
       if (payload.email === true) parts.push('email sent');
       else if (payload.email === false) parts.push('email failed (check SMTP env on Render)');
       if (payload.slack === true) parts.push('slack sent');
-      else if (payload.slack === false) parts.push('slack failed (check webhook URL)');
+      else if (payload.slack === false) {
+        const reason = payload.slack_error
+          ? ` (${payload.slack_error})`
+          : ' (check webhook URL)';
+        parts.push(`slack failed${reason}`);
+      }
       if (parts.length === 0) parts.push('No destination configured — add email or Slack URL first');
       setAlertFlash(parts.join(' · '));
-      setTimeout(() => setAlertFlash(null), 5000);
+      setTimeout(() => setAlertFlash(null), 10000);
     } catch (e: any) {
       setError(e.message);
     } finally {
