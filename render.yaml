@@ -31,6 +31,8 @@ services:
         sync: false
       - key: CORS_ALLOWED_ORIGINS
         sync: false
+      - key: TICK_KEY
+        sync: false
 
   - type: cron
     name: oem-alert-scraper-cron
