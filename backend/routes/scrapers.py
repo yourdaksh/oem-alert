@@ -9,29 +9,32 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.dependencies import require_owner, get_supabase
 
 
-def _append_scanned_oem(sb, org_id: str, oem_display: str) -> None:
+def _append_scanned_oem(sb, org_id: str, oem_display: str) -> bool:
     """Record that this org has now pulled CVEs for this OEM.
 
-    Set-union into a comma-separated list on the organizations row so the
-    /vulnerabilities read path can scope results to OEMs the tenant has
-    actually scraped, not the full shared pool. Failure here is non-fatal —
-    the scan still succeeded; the worst case is the org sees slightly too
-    much (the prior behavior).
+    Returns True when ``oem_display`` was newly added, False when it was
+    already present — the caller uses this to decide whether the alert
+    digest should widen to "every currently-visible CVE in this OEM"
+    (first-time scan) or stay narrow to "vulns inserted in this scan"
+    (subsequent scans). Failure to persist is non-fatal; we default to
+    False so the alert stays in delta mode rather than spamming.
     """
     try:
         row = sb.table("organizations").select("scanned_oems").eq("id", org_id).execute()
         prior_raw = (row.data[0].get("scanned_oems") if row.data else "") or ""
         prior = {s.strip() for s in prior_raw.split(",") if s.strip()}
         if oem_display in prior:
-            return
+            return False
         prior.add(oem_display)
         sb.table("organizations").update(
             {"scanned_oems": ",".join(sorted(prior))}
         ).eq("id", org_id).execute()
+        return True
     except Exception:
         logging.getLogger(__name__).exception(
             "could not record scanned OEM %s for org %s", oem_display, org_id,
         )
+        return False
 
 
 router = APIRouter(prefix="/scrapers", tags=["Scrapers"])
@@ -88,17 +91,28 @@ async def run_single_oem(oem: str, ctx: dict = Depends(require_owner)):
     # Track which OEMs this org has actually pulled so /vulnerabilities can
     # scope the feed to just those, not the full shared pool.
     oem_display = oem_catalog[oem].get("name") or oem
-    _append_scanned_oem(sb, org_id, oem_display)
+    first_time_for_org = _append_scanned_oem(sb, org_id, oem_display)
 
-    # Fire the digest for this org if the scan surfaced new vulns at or above
-    # the configured severity threshold. The cron fan-out handles scheduled
-    # scans; without this, manual scans never alerted despite having everything
-    # else set up — the exact bug users reported pre-demo.
+    # Fire the digest. Two modes:
+    #   - First-time scan of this OEM for this org → include every visible
+    #     row at threshold. The CVE pool is shared, so re-scraping usually
+    #     inserts zero rows (another tenant's cron has them); a pure delta
+    #     alert would send nothing, which is why users reported "no alert
+    #     after scan" even with destinations configured.
+    #   - Subsequent scans → delta only, so the owner isn't re-emailed the
+    #     same 200 rows every time they run a scan.
     alert_result: dict = {"sent": False, "reason": "skipped"}
-    if result.get("new_vulnerabilities", 0) > 0:
+    should_alert = first_time_for_org or result.get("new_vulnerabilities", 0) > 0
+    if should_alert:
         try:
             from utils.alerts import notify_single_org
-            alert_result = notify_single_org(sb, org_id, since=scrape_started)
+            alert_result = notify_single_org(
+                sb,
+                org_id,
+                since=scrape_started,
+                scoped_oem=oem_display,
+                include_existing=first_time_for_org,
+            )
         except Exception:
             logger.exception("manual-scan alert fan-out failed for org %s", org_id)
 

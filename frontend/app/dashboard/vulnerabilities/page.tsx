@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, UserPlus, Search as SearchIcon, CheckCircle2, RefreshCw, BarChart3, Zap, Sparkles } from 'lucide-react';
 import { getSupabase, API_URL } from '../../../lib/supabase';
 import { stripHtml, extractCveIds } from '../../../lib/html';
+import { useScan } from '../ScanContext';
 
 type Vuln = {
   id: string;
@@ -59,9 +60,11 @@ export default function VulnerabilitiesPage() {
   const [assignTo, setAssignTo] = useState<string>('');
   const [assignBusy, setAssignBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
   const [role, setRole] = useState<string>('');
   const [hasScanned, setHasScanned] = useState<boolean | null>(null);
+  // Use the same global orchestrator the Manual Scan page uses so progress
+  // is visible in the banner and alerts fire per-OEM on completion.
+  const { runningAll, scanAll } = useScan();
 
   useEffect(() => {
     (async () => {
@@ -155,20 +158,14 @@ export default function VulnerabilitiesPage() {
   }
 
   async function runScanNow() {
-    if (!confirm('Queue a manual scan for your organization? It runs on the background scheduler within a few minutes.')) return;
-    setScanning(true);
+    if (runningAll) return;
+    if (!confirm('Run a full scan across every OEM you monitor? Takes 3-5 minutes. You can keep using the app while it runs.')) return;
     try {
-      const { data } = await getSupabase().auth.getSession();
-      const headers = { Authorization: `Bearer ${data.session!.access_token}`, 'Content-Type': 'application/json' };
-      const res = await fetch(`${API_URL}/scrapers/run`, { method: 'POST', headers });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload.detail || 'Failed to queue scan');
-      setFlash(payload.message || 'Scan queued.');
+      await scanAll();
+      setFlash('Scan complete — refreshing vulnerabilities.');
       setTimeout(() => setFlash(null), 3500);
     } catch (e: any) {
       setError(e.message);
-    } finally {
-      setScanning(false);
     }
   }
 
@@ -204,10 +201,10 @@ export default function VulnerabilitiesPage() {
           <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>{loading ? 'Loading...' : `${filtered.length} of ${items.length} scoped to your organization`}</p>
         </div>
         {isOwner && (
-          <button onClick={runScanNow} disabled={scanning} className="btn btn-primary"
+          <button onClick={runScanNow} disabled={runningAll} className="btn btn-primary"
             style={{ padding: '0.55rem 1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {scanning ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            {scanning ? 'Queueing...' : 'Run scan now'}
+            {runningAll ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            {runningAll ? 'Scanning...' : 'Run scan now'}
           </button>
         )}
       </div>

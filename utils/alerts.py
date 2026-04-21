@@ -138,12 +138,33 @@ def _parse_oems(raw: str | None) -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-def notify_single_org(supabase, org_id: str, since: datetime) -> dict:
+_FIRST_SCAN_DIGEST_CAP = 50
+
+
+def notify_single_org(
+    supabase,
+    org_id: str,
+    since: datetime,
+    *,
+    scoped_oem: str | None = None,
+    include_existing: bool = False,
+) -> dict:
     """Run the digest send for exactly one org — used by the manual-scan path.
 
     The scheduled cron uses ``notify_orgs_of_new_vulns`` to fan out across every
     tenant at once. A manual scan is scoped to the triggering org, so we skip
     the scan across the whole org table and only touch the one we care about.
+
+    ``include_existing=True`` widens the query from "inserted since T" to
+    "every currently-visible CVE in the scoped OEMs at or above the threshold".
+    This is the right behavior the first time an org scans a given OEM: the
+    CVE pool is shared, so Adobe's advisories were probably already inserted
+    by another tenant's cron — narrowing to ``created_at >= since`` would
+    return zero and the owner never gets a welcome digest for that vendor.
+
+    ``scoped_oem`` narrows the digest to a single OEM (display name), used
+    when the manual-scan path runs one OEM at a time so the user sees the
+    email clearly attributed to the scan they just triggered.
     """
     rows = supabase.table("organizations").select(
         "id, name, enabled_oems, scanned_oems, alert_email, slack_webhook_url, "
@@ -168,17 +189,28 @@ def notify_single_org(supabase, org_id: str, since: datetime) -> dict:
         return {"sent": False, "reason": "no_destination"}
 
     scanned = _parse_oems(r.get("scanned_oems"))
+    allowed_oems = [o for o in scanned if not org.enabled_oems or o in org.enabled_oems]
+    if scoped_oem and scoped_oem in allowed_oems:
+        allowed_oems = [scoped_oem]
+    if not allowed_oems:
+        return {"sent": False, "reason": "no_oems_in_scope"}
 
-    vulns = supabase.table("vulnerabilities").select(
-        "id, unique_id, oem_name, severity_level, vulnerability_description, source_url, created_at"
-    ).gte("created_at", since.isoformat()).execute().data or []
+    query = supabase.table("vulnerabilities").select(
+        "id, unique_id, oem_name, severity_level, vulnerability_description, source_url, created_at, published_date"
+    ).in_("oem_name", allowed_oems)
+    if not include_existing:
+        query = query.gte("created_at", since.isoformat())
+    # Order newest-first and cap; keeps the email digest to a readable length
+    # even on a first-time scan of a noisy vendor like Android or Microsoft.
+    query = query.order("published_date", desc=True).limit(_FIRST_SCAN_DIGEST_CAP * 4)
+
+    vulns = query.execute().data or []
 
     relevant = [
         v for v in vulns
-        if (not scanned or v.get("oem_name") in scanned)
-        and (not org.enabled_oems or v.get("oem_name") in org.enabled_oems)
-        and _meets_severity(v.get("severity_level"), org.alert_min_severity)
-    ]
+        if _meets_severity(v.get("severity_level"), org.alert_min_severity)
+    ][:_FIRST_SCAN_DIGEST_CAP]
+
     if not relevant:
         return {"sent": False, "reason": "no_matching_vulns", "candidates": len(vulns)}
 
@@ -189,6 +221,7 @@ def notify_single_org(supabase, org_id: str, since: datetime) -> dict:
         "email": email_ok,
         "slack": slack_ok,
         "count": len(relevant),
+        "mode": "full_digest" if include_existing else "delta",
     }
 
 
