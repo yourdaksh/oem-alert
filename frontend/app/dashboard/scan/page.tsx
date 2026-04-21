@@ -53,15 +53,23 @@ export default function ScanPage() {
 
   async function scanOne(oemId: string) {
     setRunning(p => ({ ...p, [oemId]: { oem: oemId, status: 'running' } }));
+    // 90s cap so a hung scraper can't leave the UI in "Scanning..." forever.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90_000);
     try {
       const headers = { ...(await authHeaders()), 'Content-Type': 'application/json' };
-      const res = await fetch(`${API_URL}/scrapers/run-one/${oemId}`, { method: 'POST', headers });
+      const res = await fetch(`${API_URL}/scrapers/run-one/${oemId}`, {
+        method: 'POST', headers, signal: controller.signal,
+      });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.detail || `Scrape failed (${res.status})`);
       setRunning(p => ({ ...p, [oemId]: { oem: oemId, status: 'ok', found: payload.found, new: payload.new } }));
       await load(); // refresh scan_logs
     } catch (e: any) {
-      setRunning(p => ({ ...p, [oemId]: { oem: oemId, status: 'error', error: e.message } }));
+      const msg = e.name === 'AbortError' ? 'Timed out after 90s' : e.message;
+      setRunning(p => ({ ...p, [oemId]: { oem: oemId, status: 'error', error: msg } }));
+    } finally {
+      clearTimeout(timer);
     }
   }
 
