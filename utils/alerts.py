@@ -138,6 +138,60 @@ def _parse_oems(raw: str | None) -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
+def notify_single_org(supabase, org_id: str, since: datetime) -> dict:
+    """Run the digest send for exactly one org — used by the manual-scan path.
+
+    The scheduled cron uses ``notify_orgs_of_new_vulns`` to fan out across every
+    tenant at once. A manual scan is scoped to the triggering org, so we skip
+    the scan across the whole org table and only touch the one we care about.
+    """
+    rows = supabase.table("organizations").select(
+        "id, name, enabled_oems, scanned_oems, alert_email, slack_webhook_url, "
+        "alerts_enabled, alert_min_severity"
+    ).eq("id", org_id).execute().data or []
+    if not rows:
+        return {"sent": False, "reason": "org_not_found"}
+    r = rows[0]
+    if not r.get("alerts_enabled"):
+        return {"sent": False, "reason": "alerts_disabled"}
+
+    org = Org(
+        id=r["id"],
+        name=r.get("name") or "Your Organization",
+        enabled_oems=_parse_oems(r.get("enabled_oems")),
+        alert_email=r.get("alert_email"),
+        slack_webhook_url=r.get("slack_webhook_url"),
+        alerts_enabled=True,
+        alert_min_severity=r.get("alert_min_severity") or "High",
+    )
+    if not org.alert_email and not org.slack_webhook_url:
+        return {"sent": False, "reason": "no_destination"}
+
+    scanned = _parse_oems(r.get("scanned_oems"))
+
+    vulns = supabase.table("vulnerabilities").select(
+        "id, unique_id, oem_name, severity_level, vulnerability_description, source_url, created_at"
+    ).gte("created_at", since.isoformat()).execute().data or []
+
+    relevant = [
+        v for v in vulns
+        if (not scanned or v.get("oem_name") in scanned)
+        and (not org.enabled_oems or v.get("oem_name") in org.enabled_oems)
+        and _meets_severity(v.get("severity_level"), org.alert_min_severity)
+    ]
+    if not relevant:
+        return {"sent": False, "reason": "no_matching_vulns", "candidates": len(vulns)}
+
+    email_ok = send_email(org, relevant) if org.alert_email else None
+    slack_ok = send_slack(org, relevant) if org.slack_webhook_url else None
+    return {
+        "sent": bool(email_ok or slack_ok),
+        "email": email_ok,
+        "slack": slack_ok,
+        "count": len(relevant),
+    }
+
+
 def notify_orgs_of_new_vulns(supabase, since: datetime | None = None) -> dict:
     """Send digests to every org whose alerts are enabled.
 
@@ -149,7 +203,7 @@ def notify_orgs_of_new_vulns(supabase, since: datetime | None = None) -> dict:
         since = datetime.now(timezone.utc) - timedelta(hours=2)
 
     orgs_rows = supabase.table("organizations").select(
-        "id, name, enabled_oems, alert_email, slack_webhook_url, alerts_enabled, alert_min_severity"
+        "id, name, enabled_oems, scanned_oems, alert_email, slack_webhook_url, alerts_enabled, alert_min_severity"
     ).eq("alerts_enabled", True).execute().data or []
 
     if not orgs_rows:
@@ -172,9 +226,11 @@ def notify_orgs_of_new_vulns(supabase, since: datetime | None = None) -> dict:
         )
         if not org.alert_email and not org.slack_webhook_url:
             continue
+        scanned = _parse_oems(r.get("scanned_oems"))
         relevant = [
             v for v in vulns
-            if (not org.enabled_oems or v.get("oem_name") in org.enabled_oems)
+            if (not scanned or v.get("oem_name") in scanned)
+            and (not org.enabled_oems or v.get("oem_name") in org.enabled_oems)
             and _meets_severity(v.get("severity_level"), org.alert_min_severity)
         ]
         if not relevant:

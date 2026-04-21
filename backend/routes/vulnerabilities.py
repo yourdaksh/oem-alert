@@ -9,26 +9,38 @@ from backend.models_pydantic import VulnerabilityOut
 router = APIRouter(prefix="/vulnerabilities", tags=["Vulnerabilities"])
 
 
-def _org_scope(org_id: str, supabase: Client) -> tuple[list[str], bool]:
-    """Return (enabled_oems, has_scanned).
+def _split_csv(raw: str | None) -> list[str]:
+    return [s.strip() for s in (raw or "").split(",") if s.strip()]
 
-    Scraped rows live in a shared pool; we filter at read time so each tenant
-    only sees the vendors they subscribed to. On top of that, a freshly-created
-    org with no completed scans gets an empty view — showing them the pre-existing
-    shared-pool rows would be misleading ("did I scan these?"). They see their
-    data only after they've run their first scan.
-    Empty/"ALL" enabled_oems means unrestricted once scanning has happened.
+
+def _org_scope(org_id: str, supabase: Client) -> tuple[list[str], list[str], bool]:
+    """Return (enabled_oems, scanned_oems, has_scanned).
+
+    CVE rows live in a single shared pool (one row per CVE, not per-tenant).
+    To decide what this org can see we combine two signals:
+
+    * ``enabled_oems``  -- the vendors they subscribed to at checkout. Empty /
+      "ALL" means unrestricted subscription.
+    * ``scanned_oems``  -- the vendors THIS org has actually pulled data for
+      (manual or scheduled). Without this scoping, the moment a brand-new org
+      scans Adobe they'd also see every Cisco / Microsoft / etc. CVE that any
+      other tenant's scan had already populated — which is exactly what
+      surfaced during demo testing.
+
+    Callers treat ``has_scanned`` as the "show empty state" flag and
+    ``scanned_oems`` as the concrete filter.
     """
-    org = supabase.table("organizations").select("enabled_oems, last_scan_at").eq(
-        "id", org_id
-    ).execute()
+    org = supabase.table("organizations").select(
+        "enabled_oems, scanned_oems, last_scan_at"
+    ).eq("id", org_id).execute()
     if not org.data:
-        return [], False
+        return [], [], False
     row = org.data[0]
-    raw = (row.get("enabled_oems") or "").strip()
-    oems = [] if not raw or raw.upper() == "ALL" else [o.strip() for o in raw.split(",") if o.strip()]
-    has_scanned = bool(row.get("last_scan_at"))
-    return oems, has_scanned
+    raw_enabled = (row.get("enabled_oems") or "").strip()
+    enabled = [] if not raw_enabled or raw_enabled.upper() == "ALL" else _split_csv(raw_enabled)
+    scanned = _split_csv(row.get("scanned_oems"))
+    has_scanned = bool(row.get("last_scan_at")) and bool(scanned)
+    return enabled, scanned, has_scanned
 
 
 @router.get("/", response_model=List[VulnerabilityOut])
@@ -42,19 +54,26 @@ async def get_vulnerabilities(
     if not supabase:
         raise HTTPException(status_code=500, detail="Database connection missing")
 
-    org_oems, has_scanned = _org_scope(ctx["organization_id"], supabase)
-    # Brand-new orgs start empty until they've completed their first scan,
-    # otherwise they'd see the full shared pool and think their scan ran magically.
+    enabled_oems, scanned_oems, has_scanned = _org_scope(
+        ctx["organization_id"], supabase
+    )
     if not has_scanned:
         return []
 
-    query = supabase.table("vulnerabilities").select("*")
-    if org_oems:
-        if oem and oem not in org_oems:
-            return []
-        query = query.in_("oem_name", [oem] if oem else org_oems)
-    elif oem:
-        query = query.eq("oem_name", oem)
+    # Intersect scanned with subscribed — scanned should already be a subset,
+    # but if the subscription was narrowed after a scan, respect the current
+    # subscription as the outer bound.
+    visible = scanned_oems
+    if enabled_oems:
+        visible = [o for o in scanned_oems if o in enabled_oems]
+    if not visible:
+        return []
+    if oem and oem not in visible:
+        return []
+
+    query = supabase.table("vulnerabilities").select("*").in_(
+        "oem_name", [oem] if oem else visible
+    )
     if severity:
         query = query.eq("severity_level", severity)
 
@@ -73,9 +92,13 @@ async def get_vulnerability(
         raise HTTPException(status_code=404, detail="Vulnerability not found")
 
     vuln = res.data[0]
-    org_oems, has_scanned = _org_scope(ctx["organization_id"], supabase)
+    enabled_oems, scanned_oems, has_scanned = _org_scope(
+        ctx["organization_id"], supabase
+    )
     if not has_scanned:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
-    if org_oems and vuln.get("oem_name") not in org_oems:
+    if vuln.get("oem_name") not in scanned_oems:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
+    if enabled_oems and vuln.get("oem_name") not in enabled_oems:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
     return vuln

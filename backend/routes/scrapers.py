@@ -1,12 +1,37 @@
 import gc
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.dependencies import require_owner, get_supabase
+
+
+def _append_scanned_oem(sb, org_id: str, oem_display: str) -> None:
+    """Record that this org has now pulled CVEs for this OEM.
+
+    Set-union into a comma-separated list on the organizations row so the
+    /vulnerabilities read path can scope results to OEMs the tenant has
+    actually scraped, not the full shared pool. Failure here is non-fatal —
+    the scan still succeeded; the worst case is the org sees slightly too
+    much (the prior behavior).
+    """
+    try:
+        row = sb.table("organizations").select("scanned_oems").eq("id", org_id).execute()
+        prior_raw = (row.data[0].get("scanned_oems") if row.data else "") or ""
+        prior = {s.strip() for s in prior_raw.split(",") if s.strip()}
+        if oem_display in prior:
+            return
+        prior.add(oem_display)
+        sb.table("organizations").update(
+            {"scanned_oems": ",".join(sorted(prior))}
+        ).eq("id", org_id).execute()
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "could not record scanned OEM %s for org %s", oem_display, org_id,
+        )
 
 
 router = APIRouter(prefix="/scrapers", tags=["Scrapers"])
@@ -36,9 +61,14 @@ async def run_single_oem(oem: str, ctx: dict = Depends(require_owner)):
     an eye on — if they OOM we'll move them to cron-only.
     """
     from config import get_all_oems
-    valid = set(get_all_oems().keys())
-    if oem not in valid:
+    oem_catalog = get_all_oems()
+    if oem not in oem_catalog:
         raise HTTPException(status_code=400, detail=f"Unknown OEM '{oem}'")
+
+    # Snap this before running so the alert query window covers only vulns
+    # inserted by this scrape (plus a tiny safety margin).
+    scrape_started = datetime.now(timezone.utc) - timedelta(seconds=30)
+
     try:
         from run_scrapers import run_single_oem_scraper
         result = run_single_oem_scraper(oem) or {}
@@ -48,16 +78,36 @@ async def run_single_oem(oem: str, ctx: dict = Depends(require_owner)):
     finally:
         gc.collect()
 
+    sb = get_supabase()
+    org_id = ctx["organization_id"]
     now_iso = datetime.now(timezone.utc).isoformat()
-    get_supabase().table("organizations").update({"last_scan_at": now_iso}).eq(
-        "id", ctx["organization_id"]
+    sb.table("organizations").update({"last_scan_at": now_iso}).eq(
+        "id", org_id
     ).execute()
+
+    # Track which OEMs this org has actually pulled so /vulnerabilities can
+    # scope the feed to just those, not the full shared pool.
+    oem_display = oem_catalog[oem].get("name") or oem
+    _append_scanned_oem(sb, org_id, oem_display)
+
+    # Fire the digest for this org if the scan surfaced new vulns at or above
+    # the configured severity threshold. The cron fan-out handles scheduled
+    # scans; without this, manual scans never alerted despite having everything
+    # else set up — the exact bug users reported pre-demo.
+    alert_result: dict = {"sent": False, "reason": "skipped"}
+    if result.get("new_vulnerabilities", 0) > 0:
+        try:
+            from utils.alerts import notify_single_org
+            alert_result = notify_single_org(sb, org_id, since=scrape_started)
+        except Exception:
+            logger.exception("manual-scan alert fan-out failed for org %s", org_id)
 
     return {
         "status": "ok",
         "oem": oem,
         "found": result.get("vulnerabilities_found", 0),
         "new": result.get("new_vulnerabilities", 0),
+        "alert": alert_result,
     }
 
 
