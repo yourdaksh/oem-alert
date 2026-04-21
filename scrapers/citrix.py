@@ -1,24 +1,10 @@
+"""Citrix scraper — KEV-backed."""
+from typing import Any, Dict, List
+
 from scrapers.base import RSSScraper
-import re
+from scrapers._cisa_kev import kev_records_for
+
 
 class CitrixScraper(RSSScraper):
-    """Scraper for Citrix Security Bulletins"""
-    
-    def extract_product_name(self, title: str, description: str) -> str:
-        """Extract product from Citrix bulletin"""
-        if "Citrix ADC" in title:
-            return "Citrix ADC"
-        if "Citrix Gateway" in title:
-            return "Citrix Gateway"
-        if "XenServer" in title:
-            return "Citrix Hypervisor (XenServer)"
-            
-        return super().extract_product_name(title, description)
-
-    def scrape_vulnerabilities(self):
-        """Scrape vulnerabilities from RSS feed"""
-        rss_url = self.oem_config.get('rss_url')
-        if not rss_url:
-            return []
-        
-        return self.parse_rss_feed(rss_url)
+    def scrape_vulnerabilities(self) -> List[Dict[str, Any]]:
+        return kev_records_for(["Citrix"], oem_label="Citrix")

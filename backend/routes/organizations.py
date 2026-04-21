@@ -30,6 +30,46 @@ async def get_my_organization(
     return org_res.data[0]
 
 
+VALID_INTERVALS = {1, 3, 6, 12, 24, 48, 168}
+
+
+class OrgSettingsUpdate(BaseModel):
+    scan_interval_hours: int | None = None
+    enabled_oems: str | None = None
+
+
+@router.patch("/settings")
+async def update_org_settings(
+    req: OrgSettingsUpdate,
+    ctx: dict = Depends(require_owner),
+    supabase: Client = Depends(get_supabase),
+):
+    """Owner-only update for org-level preferences the product surfaces.
+
+    Intervals are constrained to a whitelist so the UI can pick from a dropdown
+    and we don't end up with one-off weird values that skew the global cron."""
+    patch: dict = {}
+    if req.scan_interval_hours is not None:
+        if req.scan_interval_hours not in VALID_INTERVALS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"scan_interval_hours must be one of {sorted(VALID_INTERVALS)}",
+            )
+        patch["scan_interval_hours"] = req.scan_interval_hours
+    if req.enabled_oems is not None:
+        patch["enabled_oems"] = req.enabled_oems
+    if not patch:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    supabase.table("organizations").update(patch).eq(
+        "id", ctx["organization_id"]
+    ).execute()
+    updated = supabase.table("organizations").select("*").eq(
+        "id", ctx["organization_id"]
+    ).execute()
+    return updated.data[0]
+
+
 @router.get("/members")
 async def get_organization_members(
     ctx: dict = Depends(get_current_user_with_org),
