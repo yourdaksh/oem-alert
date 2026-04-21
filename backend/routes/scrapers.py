@@ -15,20 +15,65 @@ logger = logging.getLogger(__name__)
 
 @router.post("/run")
 async def request_manual_scan(ctx: dict = Depends(require_owner)):
-    """Queue a manual scan for the caller's org — the tick endpoint picks it up.
-
-    We deliberately don't run anything in the API process; the 512MB Starter
-    instance OOMs when scrapers load BeautifulSoup + parsed records. The queue
-    flag is cleared after the next tick that picks the stalest OEM.
-    """
+    """Queue a scan for the caller's org — cron picks it up within 5 min."""
     sb = get_supabase()
     sb.table("organizations").update({
         "manual_scan_requested_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", ctx["organization_id"]).execute()
     return {
         "status": "queued",
-        "message": "Scan queued. Scrapers run one-per-tick on the background scheduler.",
+        "message": "Scan queued. Scrapers run on the background scheduler within ~5 minutes.",
     }
+
+
+@router.post("/run-one/{oem}")
+async def run_single_oem(oem: str, ctx: dict = Depends(require_owner)):
+    """Synchronous per-OEM scrape for the Manual Scan page.
+
+    Running ONE scraper at a time stays safely under the 512MB API limit,
+    and keeping it synchronous means the caller sees `found`/`new` counts
+    immediately in the UI. Heavy OEMs (android, apple) are worth keeping
+    an eye on — if they OOM we'll move them to cron-only.
+    """
+    from config import get_all_oems
+    valid = set(get_all_oems().keys())
+    if oem not in valid:
+        raise HTTPException(status_code=400, detail=f"Unknown OEM '{oem}'")
+    try:
+        from run_scrapers import run_single_oem_scraper
+        result = run_single_oem_scraper(oem) or {}
+    except Exception as e:
+        logger.exception("run-one %s failed", oem)
+        raise HTTPException(status_code=500, detail=f"Scraper crashed: {e}")
+    finally:
+        gc.collect()
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    get_supabase().table("organizations").update({"last_scan_at": now_iso}).eq(
+        "id", ctx["organization_id"]
+    ).execute()
+
+    return {
+        "status": "ok",
+        "oem": oem,
+        "found": result.get("vulnerabilities_found", 0),
+        "new": result.get("new_vulnerabilities", 0),
+    }
+
+
+@router.get("/oems")
+async def list_oems(ctx: dict = Depends(require_owner)):
+    """Scanner catalog surfaced to the Manual Scan page so buttons are generated dynamically."""
+    from config import get_all_oems
+    out = []
+    for oem_id, conf in get_all_oems().items():
+        out.append({
+            "id": oem_id,
+            "name": conf.get("name") or oem_id,
+            "description": conf.get("description") or "",
+            "enabled": bool(conf.get("enabled", True)),
+        })
+    return sorted(out, key=lambda x: x["name"].lower())
 
 
 @router.get("/status")
@@ -38,6 +83,20 @@ async def scan_status(ctx: dict = Depends(require_owner), limit: int = 20):
         "oem_name, scan_type, status, vulnerabilities_found, new_vulnerabilities, error_message, scan_date"
     ).order("scan_date", desc=True).limit(limit).execute()
     return res.data
+
+
+@router.head("/tick")
+async def tick_head(key: Optional[str] = None):
+    """HEAD responder so UptimeRobot's default probe type gets a 200.
+
+    If the monitor stays on HEAD it never runs scrapers — it just confirms
+    the endpoint is reachable. Users need to switch their monitor's HTTP
+    method to GET for scraping to actually fire.
+    """
+    expected = os.environ.get("TICK_KEY")
+    if not expected or key != expected:
+        raise HTTPException(status_code=401, detail="Invalid tick key")
+    return {"status": "alive"}
 
 
 @router.get("/tick")

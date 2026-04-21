@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Shield, LayoutDashboard, AlertTriangle, CheckSquare,
-  Users, Settings, LogOut, Search, Bell, Loader2,
+  Users, Settings, LogOut, Search, Bell, Loader2, Zap,
 } from 'lucide-react';
 import { getSupabase, API_URL } from '../../lib/supabase';
 
@@ -52,7 +52,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={20} /> },
     { name: 'Vulnerabilities', path: '/dashboard/vulnerabilities', icon: <AlertTriangle size={20} /> },
-    { name: 'My Tasks', path: '/dashboard/tasks', icon: <CheckSquare size={20} /> },
+    { name: 'Tasks', path: '/dashboard/tasks', icon: <CheckSquare size={20} /> },
+    { name: 'Manual Scan', path: '/dashboard/scan', icon: <Zap size={20} /> },
     { name: 'Team', path: '/dashboard/team', icon: <Users size={20} /> },
     { name: 'Settings', path: '/dashboard/settings', icon: <Settings size={20} /> },
   ];
