@@ -178,7 +178,7 @@ export default function ScanPage() {
             const state = running[o.id];
             const last = lastByOem[o.id];
             return (
-              <div key={o.id} style={{ padding: '0.85rem 1.5rem', borderBottom: '1px solid var(--surface-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+              <div key={o.id} className="scan-row" style={{ padding: '0.85rem 1.5rem', borderBottom: '1px solid var(--surface-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.15rem' }}>
                     <span style={{ fontWeight: 500 }}>{o.name}</span>

@@ -216,7 +216,7 @@ export default function VulnerabilitiesPage() {
           <div style={{ display: 'grid', gap: '0.4rem' }}>
             {summary.byOem.slice(0, 10).map(([oem, s]) => (
               <div key={oem} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.8rem' }}>
-                <span style={{ width: 110, color: '#a1a1aa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
+                <span className="summary-oem-label" style={{ width: 110, color: '#a1a1aa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
                   onClick={() => setOemFilter(oem === oemFilter ? 'all' : oem)}
                   title="Click to filter">
                   {oem}
@@ -254,7 +254,7 @@ export default function VulnerabilitiesPage() {
       )}
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filters-bar" style={{ display: 'flex', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
           <SearchIcon size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#71717a' }} />
           <input
@@ -311,7 +311,7 @@ export default function VulnerabilitiesPage() {
 
           return (
             <div key={v.id} style={{ borderBottom: '1px solid var(--surface-border)' }}>
-              <div onClick={() => toggle(v.id)}
+              <div onClick={() => toggle(v.id)} className="vuln-row-header"
                 style={{ padding: '0.9rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', transition: 'background 0.15s' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
@@ -327,7 +327,7 @@ export default function VulnerabilitiesPage() {
                 <span style={{ fontSize: '0.8rem', color: '#71717a', flexShrink: 0, minWidth: 120 }}>
                   {v.oem_name}{v.product_name && v.product_name !== v.oem_name ? ` · ${v.product_name}` : ''}
                 </span>
-                <span style={{ fontSize: '0.85rem', color: '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="vuln-row-desc" style={{ fontSize: '0.85rem', color: '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {clean.slice(0, 200)}
                 </span>
                 {v.cvss_score && (
