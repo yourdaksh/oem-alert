@@ -103,6 +103,30 @@ def main() -> int:
     }).in_("id", due).execute()
     logger.info("stamped last_scan_at for %d orgs", len(due))
 
+    # Per-org scanned_oems bookkeeping: after a scheduled scrape every OEM in
+    # the org's enabled_oems is now covered. Union-merge so we never
+    # accidentally shrink the set when an org broadens its subscription later.
+    try:
+        from config import get_all_oems
+        display_by_id = {k: (v.get("name") or k) for k, v in get_all_oems().items()}
+        all_displays = sorted(set(display_by_id.values()))
+        due_rows = sb.table("organizations").select(
+            "id, enabled_oems, scanned_oems"
+        ).in_("id", due).execute().data or []
+        for row in due_rows:
+            enabled_raw = (row.get("enabled_oems") or "").strip()
+            enabled = all_displays if (not enabled_raw or enabled_raw.upper() == "ALL") else [
+                s.strip() for s in enabled_raw.split(",") if s.strip()
+            ]
+            prior = {s.strip() for s in (row.get("scanned_oems") or "").split(",") if s.strip()}
+            prior.update(enabled)
+            sb.table("organizations").update(
+                {"scanned_oems": ",".join(sorted(prior))}
+            ).eq("id", row["id"]).execute()
+        logger.info("updated scanned_oems for %d orgs", len(due_rows))
+    except Exception:
+        logger.exception("scanned_oems bookkeeping failed (non-fatal)")
+
     try:
         from utils.alerts import notify_orgs_of_new_vulns
         result = notify_orgs_of_new_vulns(sb, since=scrape_started)
