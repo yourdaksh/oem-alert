@@ -1,7 +1,10 @@
 'use client';
-import { useState } from 'react';
-import { Shield, ShieldAlert, Check, ArrowRight, Mail, Building, Lock, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Shield, ShieldAlert, Check, ArrowRight, Mail, Building, Lock, Loader2, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
+
+const PENDING_KEY = 'oem-alert.pending_checkout';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://oem-alert-api.onrender.com';
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(1);
@@ -12,6 +15,34 @@ export default function OnboardingPage() {
     password: '',
     selectedOems: [] as string[]
   });
+
+  // Resume-payment banner: if a prior paid session is sitting in localStorage,
+  // offer to jump to setup instead of letting the user pay again.
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = window.localStorage.getItem(PENDING_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { session_id?: string; paidAt?: number };
+        // Stripe Checkout sessions expire after 24h; don't resurrect stale ones.
+        if (!parsed?.session_id || (parsed.paidAt && Date.now() - parsed.paidAt > 24 * 60 * 60 * 1000)) {
+          window.localStorage.removeItem(PENDING_KEY);
+          return;
+        }
+        // Verify it really is paid — a half-submitted session shouldn't appear as a resume offer.
+        const res = await fetch(`${API_BASE}/payments/session-status/${parsed.session_id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.payment_status === 'paid' && !cancelled) {
+          setPendingSessionId(parsed.session_id);
+        }
+      } catch { /* best-effort; onboarding still works */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const allOems = [
     'Microsoft','Cisco','VMware','Fortinet','Palo Alto','Apple','Adobe','Intel',
@@ -38,12 +69,20 @@ export default function OnboardingPage() {
   const handleCheckout = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://oem-alert-api.onrender.com'}/payments/onboarding-checkout`, {
+      const response = await fetch(`${API_BASE}/payments/onboarding-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
       const data = await response.json();
+      if (response.status === 409) {
+        // Either the email is already an account or the org has already been paid
+        // for — routing them to /login covers both (existing users sign in;
+        // orphaned paid orgs can use the recovery banner on their next visit).
+        alert(data.detail || 'You already have an account or unfinished setup.');
+        window.location.href = '/login';
+        return;
+      }
       if (!response.ok) throw new Error(data.detail || 'Failed to create checkout session');
       window.location.href = data.checkout_url;
     } catch (error: any) {
@@ -65,6 +104,28 @@ export default function OnboardingPage() {
       {/* Main */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
         <div className="animate-fade-in-up" style={{ width: '100%', maxWidth: step === 2 ? '750px' : '520px', transition: 'max-width 0.4s ease' }}>
+
+          {/* Resume-payment banner */}
+          {pendingSessionId && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.9rem 1.1rem', marginBottom: '1.5rem',
+              background: 'rgba(52,211,153,0.1)',
+              border: '1px solid rgba(52,211,153,0.35)',
+              borderRadius: 10,
+            }}>
+              <CheckCircle size={18} color="var(--primary)" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#d4d4d8' }}>Payment already completed</div>
+                <div style={{ fontSize: '0.78rem', color: '#a1a1aa' }}>You paid but didn&apos;t finish creating your account. Resume setup — no second charge.</div>
+              </div>
+              <Link href={`/login?onboarded=true&session_id=${encodeURIComponent(pendingSessionId)}`}
+                className="btn btn-primary"
+                style={{ padding: '0.55rem 0.95rem', fontSize: '0.85rem', flexShrink: 0 }}>
+                Finish setup <ArrowRight size={14} />
+              </Link>
+            </div>
+          )}
 
           {/* Progress */}
           <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2.5rem' }}>

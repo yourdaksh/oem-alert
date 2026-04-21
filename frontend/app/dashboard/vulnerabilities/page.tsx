@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, UserPlus, Search as SearchIcon, CheckCircle2, RefreshCw, BarChart3 } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, UserPlus, Search as SearchIcon, CheckCircle2, RefreshCw, BarChart3, Zap, Sparkles } from 'lucide-react';
 import { getSupabase, API_URL } from '../../../lib/supabase';
 import { stripHtml, extractCveIds } from '../../../lib/html';
 
@@ -60,6 +61,7 @@ export default function VulnerabilitiesPage() {
   const [flash, setFlash] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [role, setRole] = useState<string>('');
+  const [hasScanned, setHasScanned] = useState<boolean | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -68,9 +70,10 @@ export default function VulnerabilitiesPage() {
         const token = data.session?.access_token;
         if (!token) throw new Error('Not signed in');
         const headers = { Authorization: `Bearer ${token}` };
-        const [vRes, mRes] = await Promise.all([
+        const [vRes, mRes, oRes] = await Promise.all([
           fetch(`${API_URL}/vulnerabilities/?limit=2500`, { headers }),
           fetch(`${API_URL}/organizations/members`, { headers }),
+          fetch(`${API_URL}/organizations/me`, { headers }),
         ]);
         if (!vRes.ok) throw new Error((await vRes.json()).detail || 'Failed to load vulnerabilities');
         setItems(await vRes.json());
@@ -80,6 +83,12 @@ export default function VulnerabilitiesPage() {
           const { data: user } = await getSupabase().auth.getUser();
           const me = ml.find(m => m.id === user.user?.id);
           setRole(me?.role || '');
+        }
+        if (oRes.ok) {
+          const org = await oRes.json();
+          setHasScanned(!!org.last_scan_at);
+        } else {
+          setHasScanned(false);
         }
       } catch (e: any) {
         setError(e.message);
@@ -293,11 +302,29 @@ export default function VulnerabilitiesPage() {
 
         {!loading && filtered.length === 0 && (
           <div style={{ padding: '3rem', textAlign: 'center' }}>
-            <AlertTriangle size={36} color="#71717a" style={{ marginBottom: '0.75rem' }} />
-            <h3 style={{ fontSize: '1.05rem', marginBottom: '0.35rem' }}>No vulnerabilities match</h3>
-            <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
-              {items.length === 0 ? 'Scrapers will populate this view once they run for your enabled OEMs.' : 'Try a different filter.'}
-            </p>
+            {items.length === 0 && hasScanned === false ? (
+              <>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--primary-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+                  <Sparkles size={22} color="var(--primary)" />
+                </div>
+                <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>No scans yet</h3>
+                <p style={{ color: '#a1a1aa', fontSize: '0.9rem', marginBottom: '1.25rem', maxWidth: 420, margin: '0 auto 1.25rem' }}>
+                  Run your first scan to populate this view with advisories from the OEMs you subscribed to.
+                </p>
+                <Link href="/dashboard/scan" className="btn btn-primary"
+                  style={{ padding: '0.6rem 1.2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Zap size={16} /> Run first scan
+                </Link>
+              </>
+            ) : (
+              <>
+                <AlertTriangle size={36} color="#71717a" style={{ marginBottom: '0.75rem' }} />
+                <h3 style={{ fontSize: '1.05rem', marginBottom: '0.35rem' }}>No vulnerabilities match</h3>
+                <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
+                  {items.length === 0 ? 'Scrapers will populate this view once they run for your enabled OEMs.' : 'Try a different filter.'}
+                </p>
+              </>
+            )}
           </div>
         )}
 
